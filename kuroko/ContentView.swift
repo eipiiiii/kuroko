@@ -30,6 +30,7 @@ class KurokoViewModel {
     var inputText: String = ""
     var isLoading: Bool = false
     var errorMessage: String?
+    var sessionManager: SessionManager
     
     private var apiKey: String = ""
     private var openRouterApiKey: String = ""
@@ -37,12 +38,14 @@ class KurokoViewModel {
     private var selectedProvider: String = "gemini"
     private var model: GenerativeModel?
     
-    init() {
+    init(sessionManager: SessionManager = SessionManager()) {
+        self.sessionManager = sessionManager
         self.apiKey = UserDefaults.standard.string(forKey: "apiKey") ?? ""
         self.openRouterApiKey = UserDefaults.standard.string(forKey: "openRouterApiKey") ?? ""
         self.selectedModel = UserDefaults.standard.string(forKey: "selectedModel") ?? "gemini-2.5-flash"
         self.selectedProvider = UserDefaults.standard.string(forKey: "selectedProvider") ?? "gemini"
         updateModelConfiguration()
+        loadCurrentSession()
     }
     
     func updateModelConfiguration() {
@@ -114,6 +117,7 @@ class KurokoViewModel {
                     
                     messages[aiMessageIndex].isStreaming = false
                     isLoading = false
+                    saveCurrentSession()
                     
                 } catch {
                     isLoading = false
@@ -203,6 +207,46 @@ class KurokoViewModel {
         
         self.messages[aiMessageIndex].isStreaming = false
         isLoading = false
+        saveCurrentSession()
+    }
+    
+    // MARK: - Session Management
+    
+    func loadCurrentSession() {
+        if let session = sessionManager.currentSession {
+            messages = session.messages.map { sessionMessage in
+                ChatMessage(
+                    role: sessionMessage.role == "user" ? .user : .model,
+                    text: sessionMessage.text,
+                    isStreaming: false
+                )
+            }
+        }
+    }
+    
+    func saveCurrentSession() {
+        // 現在のメッセージをSessionMessageに変換
+        let sessionMessages = messages.map { message in
+            SessionMessage(
+                role: message.role == .user ? "user" : "model",
+                text: message.text
+            )
+        }
+        
+        // 現在のセッションを更新または新規作成
+        if sessionManager.currentSession != nil {
+            sessionManager.currentSession?.messages = sessionMessages
+            sessionManager.currentSession?.updatedAt = Date()
+        } else {
+            sessionManager.currentSession = ChatSession(messages: sessionMessages)
+        }
+        
+        sessionManager.saveCurrentSession()
+    }
+    
+    func startNewSession() {
+        messages = []
+        sessionManager.createNewSession()
     }
 }
 
@@ -233,6 +277,7 @@ extension View {
 struct ContentView: View {
     @State private var viewModel = KurokoViewModel()
     @State private var isShowingSettings = false
+    @State private var isShowingHistory = false
     @FocusState private var isInputFocused: Bool
     
     var body: some View {
@@ -301,10 +346,26 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: { isShowingSettings = true }) {
-                        Image(systemName: "slider.horizontal.3")
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: { isShowingHistory = true }) {
+                        Image(systemName: "clock.arrow.circlepath")
                             .foregroundStyle(.white)
+                    }
+                }
+                
+                ToolbarItem(placement: .topBarTrailing) {
+                    HStack(spacing: 16) {
+                        Button(action: { 
+                            viewModel.startNewSession()
+                        }) {
+                            Image(systemName: "square.and.pencil")
+                                .foregroundStyle(.white)
+                        }
+                        
+                        Button(action: { isShowingSettings = true }) {
+                            Image(systemName: "slider.horizontal.3")
+                                .foregroundStyle(.white)
+                        }
                     }
                 }
             }
@@ -313,6 +374,12 @@ struct ContentView: View {
                     .preferredColorScheme(.dark)
                     .onDisappear {
                         viewModel.updateModelConfiguration()
+                    }
+            }
+            .sheet(isPresented: $isShowingHistory) {
+                SessionHistoryView(sessionManager: viewModel.sessionManager)
+                    .onDisappear {
+                        viewModel.loadCurrentSession()
                     }
             }
         }
