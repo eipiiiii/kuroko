@@ -73,6 +73,8 @@ class SessionManager {
     
     private func loadSaveDirectory() {
         guard let bookmarkData = userDefaults.data(forKey: saveDirectoryKey) else {
+            // デフォルトでアプリのDocumentsディレクトリを使用
+            setupDefaultDirectory()
             return
         }
         
@@ -89,10 +91,35 @@ class SessionManager {
             // セキュリティスコープリソースにアクセス
             if url.startAccessingSecurityScopedResource() {
                 saveDirectoryURL = url
+                print("保存ディレクトリを設定: \(url.path)")
+            } else {
+                print("セキュリティスコープリソースへのアクセス失敗")
+                setupDefaultDirectory()
             }
         } catch {
             print("ブックマーク読み込みエラー: \(error)")
+            setupDefaultDirectory()
         }
+    }
+    
+    private func setupDefaultDirectory() {
+        // アプリのDocumentsディレクトリを使用
+        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let kurokoURL = documentsURL.appendingPathComponent("Kuroko")
+        
+        do {
+            if !FileManager.default.fileExists(atPath: kurokoURL.path) {
+                try FileManager.default.createDirectory(at: kurokoURL, withIntermediateDirectories: true, attributes: nil)
+            }
+            saveDirectoryURL = kurokoURL
+            print("デフォルトディレクトリを使用: \(kurokoURL.path)")
+        } catch {
+            print("デフォルトディレクトリ作成失敗: \(error)")
+        }
+    }
+    
+    func getCurrentSaveDirectoryPath() -> String? {
+        return saveDirectoryURL?.path
     }
     
     // MARK: - Session Management
@@ -259,8 +286,8 @@ class SessionManager {
                   let title = metadata["title"],
                   let createdString = metadata["created"],
                   let updatedString = metadata["updated"],
-                  let createdAt = ISO8601DateFormatter().date(from: createdString),
-                  let updatedAt = ISO8601DateFormatter().date(from: updatedString) else {
+                  let _ = ISO8601DateFormatter().date(from: createdString),
+                  let _ = ISO8601DateFormatter().date(from: updatedString) else {
                 return nil
             }
             
@@ -271,8 +298,6 @@ class SessionManager {
             return ChatSession(
                 id: id,
                 title: title,
-                createdAt: createdAt,
-                updatedAt: updatedAt,
                 messages: messages
             )
         } catch {

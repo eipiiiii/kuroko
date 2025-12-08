@@ -325,9 +325,11 @@ struct ContentView: View {
                             .padding(.horizontal, 16) // 画面端からの余白
                             .padding(.top, 16)
                         }
-                        .onChange(of: viewModel.messages.last?.text) { _, _ in
-                            if let lastId = viewModel.messages.last?.id {
-                                proxy.scrollTo(lastId, anchor: .bottom)
+                        .onChange(of: viewModel.messages.last?.text) { _ in
+                            DispatchQueue.main.async {
+                                if let lastId = viewModel.messages.last?.id {
+                                    proxy.scrollTo(lastId, anchor: .bottom)
+                                }
                             }
                         }
                     }
@@ -438,6 +440,7 @@ struct MessageBubble: View {
                     .padding(.leading, 4)
                 } else {
                     Markdown(message.text)
+                        .id(message.id)
                         .markdownTextStyle {
                             FontSize(16)
                             ForegroundColor(.primary)
