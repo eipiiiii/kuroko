@@ -28,9 +28,8 @@ struct SettingsView: View {
     @State private var openRouterModels: [OpenRouterModel] = []
     @State private var searchQuery: String = ""
     @State private var showingFolderPicker = false
-    @State private var currentSavePath: String = ""
     
-    @State private var sessionManager = SessionManager()
+    @Bindable var sessionManager: SessionManager
     
     let providerOptions = ["gemini", "openrouter"]
     
@@ -77,6 +76,20 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                
+                Section(header: Text("会話履歴の保存")) {
+                    HStack {
+                        Image(systemName: "folder")
+                        Text("保存先フォルダ")
+                        Spacer()
+                        Text(sessionManager.saveDirectoryURL?.lastPathComponent ?? "未選択")
+                            .foregroundStyle(.secondary)
+                        Button("変更") {
+                            showingFolderPicker = true
+                        }
+                    }
+                }
+                
                 Section(header: Text("APIプロバイダー")) {
                     Picker("プロバイダーを選択", selection: $selectedProvider) {
                         ForEach(providerOptions, id: \.self) { provider in
@@ -195,6 +208,13 @@ struct SettingsView: View {
                     }
                 }
             }
+            .fileImporter(
+                isPresented: $showingFolderPicker,
+                allowedContentTypes: [.folder],
+                allowsMultipleSelection: false
+            ) { result in
+                handleFolderSelection(result)
+            }
         }
         .onAppear {
             if selectedProvider == "openrouter" && openRouterApiKey.isEmpty {
@@ -204,6 +224,17 @@ struct SettingsView: View {
             
             // 保存されたモデルを読み込む
             loadSavedModels()
+        }
+    }
+    
+    private func handleFolderSelection(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            if let url = urls.first {
+                sessionManager.setSaveDirectory(url)
+            }
+        case .failure(let error):
+            print("フォルダ選択エラー: \(error)")
         }
     }
     
@@ -260,92 +291,5 @@ struct SettingsView: View {
 }
 
 #Preview {
-    SettingsView()
-}
-
-// フォルダ選択用のView
-struct FolderSelectionView: View {
-    // この画面自体の表示/非表示を制御するバインディング
-    @Binding var isPresented: Bool
-    
-    // ファイルインポーター（OSのフォルダ選択画面）の表示制御用
-    @State private var isImporting: Bool = false
-    
-    // SessionManagerのインスタンス（適宜環境に合わせて修正してください）
-    @State private var sessionManager = SessionManager()
-    
-    var body: some View {
-        NavigationStack { // iOS16以降はNavigationStack推奨（古い場合はNavigationViewでOK）
-            Form {
-                Section {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("保存先フォルダを選択")
-                            .font(.headline)
-                        
-                        Text("Filesアプリでアクセスできる場所を選択してください。")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.vertical, 8)
-                }
-                
-                // 元々ツールバーの中にあったSectionをここに移動
-                Section(header: Text("保存先設定")) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("現在の保存先")
-                                .font(.subheadline)
-                            Text(sessionManager.getCurrentSaveDirectoryPath() ?? "未設定")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        }
-                        
-                        Spacer()
-                        
-                        Button("変更") {
-                            // フォルダ選択画面を開く
-                            isImporting = true
-                        }
-                        .buttonStyle(.bordered)
-                    }
-                }
-            }
-            .navigationTitle("保存先設定")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                // 閉じるボタン
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("閉じる") {
-                        isPresented = false
-                    }
-                }
-            }
-            // フォルダ選択ダイアログ
-            .fileImporter(
-                isPresented: $isImporting, // ここを分離した変数に変更
-                allowedContentTypes: [.folder],
-                allowsMultipleSelection: false
-            ) { result in
-                switch result {
-                case .success(let urls):
-                    if let url = urls.first {
-                        // セキュリティスコープのアクセス権を確保する必要がある場合があります
-                        if url.startAccessingSecurityScopedResource() {
-                            defer { url.stopAccessingSecurityScopedResource() }
-                            sessionManager.setSaveDirectory(url)
-                            print("保存先を変更: \(url.path)")
-                        } else {
-                            // 通常のディレクトリの場合
-                            sessionManager.setSaveDirectory(url)
-                            print("保存先を変更: \(url.path)")
-                        }
-                    }
-                case .failure(let error):
-                    print("フォルダ選択エラー: \(error)")
-                }
-            }
-        }
-    }
+    SettingsView(sessionManager: SessionManager())
 }

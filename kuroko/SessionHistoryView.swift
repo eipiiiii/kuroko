@@ -11,7 +11,6 @@ import UniformTypeIdentifiers
 struct SessionHistoryView: View {
     @Bindable var sessionManager: SessionManager
     @Environment(\.dismiss) private var dismiss
-    @State private var showingFolderPicker = false
     @State private var searchText = ""
     
     var filteredSessions: [ChatSession] {
@@ -34,51 +33,24 @@ struct SessionHistoryView: View {
                     // フォルダ設定セクション
                     if sessionManager.saveDirectoryURL == nil {
                         VStack(spacing: 16) {
-                            Image(systemName: "folder.badge.plus")
+                            Image(systemName: "folder.badge.questionmark")
                                 .font(.system(size: 60))
                                 .foregroundStyle(.cyan)
                             
-                            Text("保存先フォルダを選択してください")
+                            Text("保存先が未設定です")
                                 .font(.headline)
                                 .foregroundStyle(.white)
                             
-                            Text("会話履歴をMarkdownファイルとして\n選択したフォルダに保存します")
+                            Text("設定画面から会話履歴を保存する\nフォルダを選択してください")
                                 .font(.caption)
                                 .foregroundStyle(.gray)
                                 .multilineTextAlignment(.center)
-                            
-                            Button(action: { showingFolderPicker = true }) {
-                                Label("フォルダを選択", systemImage: "folder")
-                                    .font(.body)
-                                    .foregroundStyle(.black)
-                                    .padding(.horizontal, 24)
-                                    .padding(.vertical, 12)
-                                    .background(Color.cyan)
-                                    .cornerRadius(10)
-                            }
                         }
                         .padding()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
                         // セッションリスト
                         List {
-                            Section {
-                                HStack {
-                                    Image(systemName: "folder.fill")
-                                        .foregroundStyle(.cyan)
-                                    Text(sessionManager.saveDirectoryURL?.lastPathComponent ?? "未選択")
-                                        .font(.caption)
-                                        .foregroundStyle(.white)
-                                    Spacer()
-                                    Button("変更") {
-                                        showingFolderPicker = true
-                                    }
-                                    .font(.caption)
-                                    .foregroundStyle(.cyan)
-                                }
-                                .listRowBackground(Color(red: 0.15, green: 0.15, blue: 0.15))
-                            }
-                            
                             Section(header: Text("会話履歴").foregroundStyle(.white)) {
                                 if filteredSessions.isEmpty {
                                     ContentUnavailableView {
@@ -131,32 +103,19 @@ struct SessionHistoryView: View {
                     }
                 }
             }
-            .fileImporter(
-                isPresented: $showingFolderPicker,
-                allowedContentTypes: [.folder],
-                allowsMultipleSelection: false
-            ) { result in
-                handleFolderSelection(result)
+            .onAppear {
+                if sessionManager.saveDirectoryURL != nil {
+                    sessionManager.loadSessions()
+                }
             }
+            .preferredColorScheme(.dark)
         }
-        .preferredColorScheme(.dark)
     }
     
     private func deleteSessions(at offsets: IndexSet) {
         for index in offsets {
             let session = filteredSessions[index]
             sessionManager.deleteSession(session)
-        }
-    }
-    
-    private func handleFolderSelection(_ result: Result<[URL], Error>) {
-        switch result {
-        case .success(let urls):
-            if let url = urls.first {
-                sessionManager.setSaveDirectory(url)
-            }
-        case .failure(let error):
-            print("フォルダ選択エラー: \(error)")
         }
     }
 }

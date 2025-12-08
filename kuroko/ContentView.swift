@@ -372,7 +372,7 @@ struct ContentView: View {
                 }
             }
             .sheet(isPresented: $isShowingSettings) {
-                SettingsView()
+                SettingsView(sessionManager: viewModel.sessionManager)
                     .preferredColorScheme(.dark)
                     .onDisappear {
                         viewModel.updateModelConfiguration()
