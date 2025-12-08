@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		35189B252EE6E3DC00FBA626 /* GoogleGenerativeAI in Frameworks */ = {isa = PBXBuildFile; productRef = 35189B242EE6E3DC00FBA626 /* GoogleGenerativeAI */; };
+		35189B2B2EE70A1500FBA626 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = 35189B2A2EE70A1500FBA626 /* MarkdownUI */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -57,6 +58,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				35189B252EE6E3DC00FBA626 /* GoogleGenerativeAI in Frameworks */,
+				35189B2B2EE70A1500FBA626 /* MarkdownUI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -83,6 +85,7 @@
 				35189AFB2EE6DF0D00FBA626 /* kuroko */,
 				35189B092EE6DF1100FBA626 /* kurokoTests */,
 				35189B132EE6DF1100FBA626 /* kurokoUITests */,
+				35189B292EE70A1500FBA626 /* Frameworks */,
 				35189AFA2EE6DF0D00FBA626 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -95,6 +98,13 @@
 				35189B102EE6DF1100FBA626 /* kurokoUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		35189B292EE70A1500FBA626 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -118,6 +128,7 @@
 			name = kuroko;
 			packageProductDependencies = (
 				35189B242EE6E3DC00FBA626 /* GoogleGenerativeAI */,
+				35189B2A2EE70A1500FBA626 /* MarkdownUI */,
 			);
 			productName = kuroko;
 			productReference = 35189AF92EE6DF0D00FBA626 /* kuroko.app */;
@@ -203,6 +214,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				35189B232EE6E3DC00FBA626 /* XCRemoteSwiftPackageReference "generative-ai-swift" */,
+				35189B282EE7074800FBA626 /* XCRemoteSwiftPackageReference "MarkdownUI" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 35189AFA2EE6DF0D00FBA626 /* Products */;
@@ -654,6 +666,14 @@
 				minimumVersion = 0.5.6;
 			};
 		};
+		35189B282EE7074800FBA626 /* XCRemoteSwiftPackageReference "MarkdownUI" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/gonzalezreal/MarkdownUI";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.4.1;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -661,6 +681,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 35189B232EE6E3DC00FBA626 /* XCRemoteSwiftPackageReference "generative-ai-swift" */;
 			productName = GoogleGenerativeAI;
+		};
+		35189B2A2EE70A1500FBA626 /* MarkdownUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 35189B282EE7074800FBA626 /* XCRemoteSwiftPackageReference "MarkdownUI" */;
+			productName = MarkdownUI;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import MarkdownUI
 import GoogleGenerativeAI
 import Foundation
 
@@ -225,17 +226,7 @@ extension View {
     }
 }
 
-// MARK: - Markdown Parser
 
-func parseMarkdown(_ markdown: String) -> AttributedString {
-    do {
-        let attributedString = try AttributedString(markdown: markdown)
-        return attributedString
-    } catch {
-        // パース失敗時はプレーンテキストで返す
-        return AttributedString(markdown)
-    }
-}
 
 // MARK: - Views
 
@@ -379,11 +370,13 @@ struct MessageBubble: View {
                     }
                     .padding(.leading, 4)
                 } else {
-                    Text(parseMarkdown(message.text))
-                        .font(.system(size: 16, weight: .regular))
-                        .lineSpacing(5)
-                        .foregroundStyle(Color(uiColor: .lightText)) // 真っ白すぎない白
-                        .frame(maxWidth: .infinity, alignment: .leading) // 左詰め、幅いっぱい
+                    Markdown(message.text)
+                        .markdownTextStyle {
+                            FontSize(16)
+                            ForegroundColor(.primary)
+                            FontWeight(.regular)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
                 }
                 

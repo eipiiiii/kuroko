@@ -1,5 +1,5 @@
 {
-  "originHash" : "fb9ac36071f364d419c527ac181073d029907ab8c2d0a2cf5e1dbf2b4a353436",
+  "originHash" : "c798eb2cbf6a2074259e08be20fa7199a05d51e8c06ed07dfcb0eead3a07c436",
   "pins" : [
     {
       "identity" : "generative-ai-swift",
@@ -8,6 +8,33 @@
       "state" : {
         "revision" : "44b8ce120425f9cf53ca756f3434ca2c2696f8bd",
         "version" : "0.5.6"
+      }
+    },
+    {
+      "identity" : "markdownui",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/gonzalezreal/MarkdownUI",
+      "state" : {
+        "revision" : "5f613358148239d0292c0cef674a3c2314737f9e",
+        "version" : "2.4.1"
+      }
+    },
+    {
+      "identity" : "networkimage",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/gonzalezreal/NetworkImage",
+      "state" : {
+        "revision" : "2849f5323265386e200484b0d0f896e73c3411b9",
+        "version" : "6.0.1"
+      }
+    },
+    {
+      "identity" : "swift-cmark",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swiftlang/swift-cmark",
+      "state" : {
+        "revision" : "5d9bdaa4228b381639fff09403e39a04926e2dbe",
+        "version" : "0.7.1"
       }
     }
   ],
