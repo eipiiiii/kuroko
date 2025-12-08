@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/Users/hayashieisuke/Projects/swift/kuroko/.build/index-build/arm64-apple-macosx/debug/kuroko.build/master.swiftdeps"
+  },
+  "/Users/hayashieisuke/Projects/swift/kuroko/Sources/kuroko/kuroko.swift": {
+    "dependencies": "/Users/hayashieisuke/Projects/swift/kuroko/.build/index-build/arm64-apple-macosx/debug/kuroko.build/kuroko.d",
+    "object": "/Users/hayashieisuke/Projects/swift/kuroko/.build/index-build/arm64-apple-macosx/debug/kuroko.build/kuroko.swift.o",
+    "swiftmodule": "/Users/hayashieisuke/Projects/swift/kuroko/.build/index-build/arm64-apple-macosx/debug/kuroko.build/kuroko~partial.swiftmodule",
+    "swift-dependencies": "/Users/hayashieisuke/Projects/swift/kuroko/.build/index-build/arm64-apple-macosx/debug/kuroko.build/kuroko.swiftdeps",
+    "diagnostics": "/Users/hayashieisuke/Projects/swift/kuroko/.build/index-build/arm64-apple-macosx/debug/kuroko.build/kuroko.dia"
+  }
+}

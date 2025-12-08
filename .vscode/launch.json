@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:kuroko}",
+            "name": "Debug kuroko",
+            "target": "kuroko",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug kuroko"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:kuroko}",
+            "name": "Release kuroko",
+            "target": "kuroko",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release kuroko"
+        }
+    ]
+}
