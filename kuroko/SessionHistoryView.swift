@@ -27,7 +27,9 @@ struct SessionHistoryView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(red: 0.05, green: 0.05, blue: 0.05).ignoresSafeArea()
+                #if os(iOS)
+                Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
+                #endif
                 
                 VStack(spacing: 0) {
                     // フォルダ設定セクション
@@ -39,11 +41,11 @@ struct SessionHistoryView: View {
                             
                             Text("保存先が未設定です")
                                 .font(.headline)
-                                .foregroundStyle(.white)
+                                .foregroundStyle(.primary)
                             
                             Text("設定画面から会話履歴を保存する\nフォルダを選択してください")
                                 .font(.caption)
-                                .foregroundStyle(.gray)
+                                .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)
                         }
                         .padding()
@@ -51,15 +53,15 @@ struct SessionHistoryView: View {
                     } else {
                         // セッションリスト
                         List {
-                            Section(header: Text("会話履歴").foregroundStyle(.white)) {
+                            Section(header: Text("会話履歴").foregroundStyle(.secondary)) {
                                 if filteredSessions.isEmpty {
                                     ContentUnavailableView {
                                         Image(systemName: "text.bubble")
                                             .font(.system(size: 40))
-                                            .foregroundStyle(.gray)
+                                            .foregroundStyle(.secondary)
                                     } description: {
                                         Text(searchText.isEmpty ? "保存された会話がありません" : "検索結果がありません")
-                                            .foregroundStyle(.gray)
+                                            .foregroundStyle(.secondary)
                                     }
                                     .listRowBackground(Color.clear)
                                 } else {
@@ -70,7 +72,7 @@ struct SessionHistoryView: View {
                                                 sessionManager.loadSession(session)
                                                 dismiss()
                                             }
-                                            .listRowBackground(Color(red: 0.15, green: 0.15, blue: 0.15))
+                                        // Use default list row background
                                     }
                                     .onDelete(perform: deleteSessions)
                                 }
@@ -85,7 +87,7 @@ struct SessionHistoryView: View {
             .navigationTitle("会話履歴")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            // .toolbarColorScheme(.dark, for: .navigationBar) // Removed
             #endif
             .toolbar {
                 #if os(iOS)
@@ -93,7 +95,7 @@ struct SessionHistoryView: View {
                     Button("閉じる") {
                         dismiss()
                     }
-                    .foregroundStyle(.white)
+                    // .foregroundStyle(.white) // Use default tint
                 }
                 
                 if sessionManager.saveDirectoryURL != nil {
@@ -102,7 +104,7 @@ struct SessionHistoryView: View {
                             sessionManager.loadSessions()
                         } label: {
                             Image(systemName: "arrow.clockwise")
-                                .foregroundStyle(.white)
+                            // .foregroundStyle(.white) // Use default tint
                         }
                     }
                 }
@@ -129,7 +131,7 @@ struct SessionHistoryView: View {
                     sessionManager.loadSessions()
                 }
             }
-            .preferredColorScheme(.dark)
+            // .preferredColorScheme(.dark) // Removed
         }
     }
     
@@ -158,11 +160,11 @@ struct SessionRow: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(session.title)
                 .font(.headline)
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
             
             Text(preview)
                 .font(.caption)
-                .foregroundStyle(.gray)
+                .foregroundStyle(.secondary)
                 .lineLimit(2)
             
             HStack {
@@ -174,7 +176,7 @@ struct SessionRow: View {
                 Text(dateFormatter.string(from: session.updatedAt))
                     .font(.caption2)
             }
-            .foregroundStyle(.gray)
+            .foregroundStyle(.secondary)
         }
         .padding(.vertical, 4)
     }

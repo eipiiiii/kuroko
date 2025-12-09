@@ -378,14 +378,14 @@ struct ContentView: View {
                 }
                 .sheet(isPresented: $isShowingSettings) {
                     SettingsView(sessionManager: viewModel.sessionManager)
-                        .preferredColorScheme(.dark)
+                        // .preferredColorScheme(.dark) // Removed to support system theme
                         .onDisappear {
                             viewModel.updateModelConfiguration()
                         }
                 }
                 .sheet(isPresented: $isShowingHistory) {
                     SessionHistoryView(sessionManager: viewModel.sessionManager)
-                        .preferredColorScheme(.dark)
+                        // .preferredColorScheme(.dark) // Removed
                         .onDisappear {
                             viewModel.loadCurrentSession()
                         }
@@ -408,10 +408,17 @@ struct MessageBubble: View {
                 Spacer()
                 Text(message.text)
                     .font(.system(size: 16, weight: .regular))
-                    .foregroundStyle(Color.lightText)
+                    .foregroundStyle(.white) // User bubbles often keep white text on dark/colored bubbles even in Light Mode if the bubble is dark.
+                    // However, to be "native" usually user bubbles are Blue/Green and text is White.
+                    // The previous code had a Dark Gray bubble with Light text.
+                    // Let's stick to a Native Look: User = AccentColor, Text = White.
+                    // Assistant = Transparent/Gray, Text = Primary.
+                    // Wait, the user specifically asked to fix "text color and UI color issues".
+                    // The previous implementation was explicitly "Perplexity-like" (Dark).
+                    // If I switch to Native, User bubble -> Blue, Assistant -> Clear.
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
-                    .background(Color(red: 0.15, green: 0.15, blue: 0.15))
+                    .background(Color.accentColor) // Native-like accent color
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                     .frame(maxWidth: UIScreen.main.bounds.width * 0.75, alignment: .trailing)
             }
@@ -421,12 +428,12 @@ struct MessageBubble: View {
                 HStack(spacing: 8) {
                     Image(systemName: "sparkles")
                         .font(.system(size: 14))
-                        .foregroundStyle(.cyan)
+                        .foregroundStyle(Color.accentColor)
                     
                     Text("Answer")
                         .font(.caption)
                         .fontWeight(.bold)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                     Spacer()
                 }
                 
@@ -435,10 +442,10 @@ struct MessageBubble: View {
                     HStack {
                         ProgressView()
                             .controlSize(.small)
-                            .tint(.gray)
+                            .tint(.secondary)
                         Text("考え中...")
                             .font(.caption)
-                            .foregroundStyle(.gray)
+                            .foregroundStyle(.secondary)
                     }
                     .padding(.leading, 4)
                 } else {
@@ -446,7 +453,7 @@ struct MessageBubble: View {
                         .id(message.id)
                         .markdownTextStyle {
                             FontSize(16)
-                            ForegroundColor(.white)
+                            ForegroundColor(.primary)
                             FontWeight(.regular)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -543,9 +550,9 @@ struct InputArea: View {
             Button(action: {}) {
                 Image(systemName: "plus")
                     .font(.system(size: 20))
-                    .foregroundStyle(.gray)
+                    .foregroundStyle(.secondary)
                     .frame(width: 44, height: 44)
-                    .background(Color(red: 0.15, green: 0.15, blue: 0.15))
+                    .background(Color(uiColor: .secondarySystemBackground))
                     .clipShape(Circle())
             }
             
@@ -555,17 +562,17 @@ struct InputArea: View {
                     .padding(.leading, 16)
                     .padding(.trailing, 40)
                     .padding(.vertical, 12)
-                    .background(Color(red: 0.15, green: 0.15, blue: 0.15))
+                    .background(Color(uiColor: .secondarySystemBackground))
                     .cornerRadius(25)
                     .lineLimit(1...5)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
                 
                 Button(action: onSend) {
                     Image(systemName: text.isEmpty ? "mic.fill" : "arrow.up")
                         .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(text.isEmpty ? .gray : .black)
+                        .foregroundStyle(text.isEmpty ? Color.secondary : Color.white)
                         .frame(width: 30, height: 30)
-                        .background(text.isEmpty ? Color.clear : Color.cyan)
+                        .background(text.isEmpty ? Color.clear : Color.accentColor) // Use accent color for send button
                         .clipShape(Circle())
                 }
                 .disabled(isLoading)

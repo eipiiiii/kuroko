@@ -8,7 +8,7 @@ struct ChatView: View {
     var body: some View {
         ZStack {
             #if os(iOS)
-            Color(red: 0.05, green: 0.05, blue: 0.05).ignoresSafeArea()
+            Color(uiColor: .systemBackground).ignoresSafeArea()
             #endif
             
             VStack(spacing: 0) {
@@ -75,7 +75,7 @@ struct ChatView: View {
                 #if os(iOS)
                 .padding(.horizontal)
                 .padding(.bottom, 8)
-                .background(Color(red: 0.05, green: 0.05, blue: 0.05))
+                .background(Color(uiColor: .systemBackground))
                 #endif
             }
         }
