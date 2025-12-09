@@ -40,14 +40,31 @@ class SearchService {
             return "No search results found."
         }
         
-        let resultString = items.map { item in
-            """
-            Title: \(item.title)
-            Link: \(item.link)
-            Snippet: \(item.snippet ?? "No snippet")
-            """
-        }.joined(separator: "\n\n")
+        // Format as structured Markdown list
+        var resultString = "🔍 **Search Results:**\n\n"
         
-        return "Search Results:\n\(resultString)"
+        for (index, item) in items.enumerated() {
+            let number = index + 1
+            let title = item.title
+            let snippet = item.snippet ?? "No description available"
+            let link = item.link
+            
+            resultString += "\(number). **\(title)**"
+            if !snippet.isEmpty {
+                resultString += " - \(snippet)"
+            }
+            resultString += "  \n   Source: [\(extractDomain(from: link))](\(link))\n\n"
+        }
+        
+        return resultString.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    
+    private func extractDomain(from urlString: String) -> String {
+        guard let url = URL(string: urlString),
+              let host = url.host else {
+            return urlString
+        }
+        // Remove 'www.' prefix if present
+        return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
     }
 }
