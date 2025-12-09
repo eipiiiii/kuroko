@@ -8,37 +8,6 @@
 import Foundation
 import SwiftUI
 
-// MARK: - Session Model
-struct ChatSession: Identifiable, Codable {
-    let id: UUID
-    var title: String
-    var createdAt: Date
-    var updatedAt: Date
-    var messages: [SessionMessage]
-    
-    init(id: UUID = UUID(), title: String = "新しい会話", createdAt: Date = Date(), updatedAt: Date = Date(), messages: [SessionMessage] = []) {
-        self.id = id
-        self.title = title
-        self.createdAt = createdAt
-        self.updatedAt = updatedAt
-        self.messages = messages
-    }
-}
-
-struct SessionMessage: Identifiable, Codable, Equatable {
-    let id: UUID
-    let role: String // "user" or "model"
-    let text: String
-    let timestamp: Date
-    
-    init(id: UUID = UUID(), role: String, text: String, timestamp: Date = Date()) {
-        self.id = id
-        self.role = role
-        self.text = text
-        self.timestamp = timestamp
-    }
-}
-
 // MARK: - Session Manager
 @Observable
 class SessionManager {
@@ -207,6 +176,7 @@ class SessionManager {
     func saveCurrentSession() {
         guard let session = currentSession,
               let directoryURL = saveDirectoryURL else {
+            print("⚠️ セッション保存スキップ: currentSession または saveDirectoryURL が nil")
             return
         }
         
@@ -227,30 +197,47 @@ class SessionManager {
         let legacyFileName = "\(sessionToSave.id.uuidString).md"
         let legacyFileURL = directoryURL.appendingPathComponent(legacyFileName)
         
+        print("📝 セッション保存開始: \(fileName)")
+        print("📁 保存先: \(fileURL.path)")
         
-        // エンコード処理をメインアクターで実行してからバックグラウンドで保存
+        // エンコード
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting = .prettyPrinted
             encoder.dateEncodingStrategy = .iso8601
             let data = try encoder.encode(sessionToSave)
             
-            // 保存処理をバックグラウンドで実行
-            Task.detached(priority: .background) {
+            print("✅ エンコード成功: \(data.count) bytes")
+            
+            // バックグラウンドタスクで保存（セキュリティスコープを正しく管理）
+            Task {
+                // セキュリティスコープリソースへのアクセスを開始
+                let accessGranted = directoryURL.startAccessingSecurityScopedResource()
+                print("🔐 セキュリティスコープアクセス: \(accessGranted ? "成功" : "失敗")")
+                
+                defer {
+                    if accessGranted {
+                        directoryURL.stopAccessingSecurityScopedResource()
+                        print("🔓 セキュリティスコープアクセス終了")
+                    }
+                }
+                
                 do {
                     try data.write(to: fileURL, options: .atomic)
+                    print("✅ ファイル保存成功: \(fileName)")
                     
                     // 保存に成功したら、古いMDファイルを削除（移行完了）
                     if FileManager.default.fileExists(atPath: legacyFileURL.path) {
                         try FileManager.default.removeItem(at: legacyFileURL)
-                        print("Legacy markdown file migrated and deleted: \(legacyFileName)")
+                        print("🗑️ Legacy markdown file migrated and deleted: \(legacyFileName)")
                     }
                 } catch {
-                    print("セッション保存エラー: \(error)")
+                    print("❌ セッション保存エラー: \(error)")
+                    print("❌ エラー詳細: \(error.localizedDescription)")
                 }
             }
         } catch {
-            print("セッションエンコードエラー: \(error)")
+            print("❌ セッションエンコードエラー: \(error)")
         }
         
         // メモリ内のデータを更新
