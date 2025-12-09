@@ -16,11 +16,11 @@ struct ChatSession: Identifiable, Codable {
     var updatedAt: Date
     var messages: [SessionMessage]
     
-    init(id: UUID = UUID(), title: String = "新しい会話", messages: [SessionMessage] = []) {
+    init(id: UUID = UUID(), title: String = "新しい会話", createdAt: Date = Date(), updatedAt: Date = Date(), messages: [SessionMessage] = []) {
         self.id = id
         self.title = title
-        self.createdAt = Date()
-        self.updatedAt = Date()
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
         self.messages = messages
     }
 }
@@ -286,8 +286,8 @@ class SessionManager {
                   let title = metadata["title"],
                   let createdString = metadata["created"],
                   let updatedString = metadata["updated"],
-                  let _ = ISO8601DateFormatter().date(from: createdString),
-                  let _ = ISO8601DateFormatter().date(from: updatedString) else {
+                  let created = ISO8601DateFormatter().date(from: createdString),
+                  let updated = ISO8601DateFormatter().date(from: updatedString) else {
                 return nil
             }
             
@@ -298,6 +298,8 @@ class SessionManager {
             return ChatSession(
                 id: id,
                 title: title,
+                createdAt: created,
+                updatedAt: updated,
                 messages: messages
             )
         } catch {
