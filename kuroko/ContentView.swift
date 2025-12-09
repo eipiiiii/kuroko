@@ -354,7 +354,7 @@ struct ContentView: View {
         } detail: {
             ChatView(viewModel: viewModel)
                 #if os(macOS)
-                .background(Color(nsColor: .windowBackgroundColor)) // Native macOS background
+                .background(themeManager.backgroundColor) // Native macOS background
                 #endif
         }
         .navigationTitle(viewModel.sessionManager.currentSession?.title ?? "kuroko")
@@ -418,7 +418,7 @@ struct MessageBubble: View {
                 Spacer()
                 Text(message.text)
                     .font(.system(size: 16, weight: .regular))
-                    .foregroundStyle(themeManager.textColorOnAccent) // Text color adapts to theme
+                    .foregroundStyle(themeManager.textColorOnMain) // Text color adapts to main color
                     // However, to be "native" usually user bubbles are Blue/Green and text is White.
                     // The previous code had a Dark Gray bubble with Light text.
                     // Let's stick to a Native Look: User = AccentColor, Text = White.
@@ -428,7 +428,7 @@ struct MessageBubble: View {
                     // If I switch to Native, User bubble -> Blue, Assistant -> Clear.
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
-                    .background(themeManager.accentColor) // Dynamic theme color
+                    .background(themeManager.mainColor) // User bubble uses Main Color
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                     .frame(maxWidth: UIScreen.main.bounds.width * 0.75, alignment: .trailing)
             }
@@ -455,7 +455,7 @@ struct MessageBubble: View {
                             .tint(.secondary)
                         Text("考え中...")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(themeManager.textColor.opacity(0.8))
                     }
                     .padding(.leading, 4)
                 } else {
@@ -463,7 +463,7 @@ struct MessageBubble: View {
                         .id(message.id)
                         .markdownTextStyle {
                             FontSize(16)
-                            ForegroundColor(.primary)
+                            ForegroundColor(themeManager.textColor)
                             FontWeight(.regular)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -489,10 +489,10 @@ struct MessageBubble: View {
                 
                 Text(message.text)
                     .font(.body)
-                    .foregroundStyle(themeManager.textColorOnAccent)
+                    .foregroundStyle(themeManager.textColorOnMain)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
-                    .background(themeManager.accentColor)
+                    .background(themeManager.mainColor)
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .frame(maxWidth: 400, alignment: .trailing)
             } else {
@@ -506,14 +506,13 @@ struct MessageBubble: View {
                             .id(message.id)
                             .markdownTextStyle {
                                 FontSize(16)
-                                ForegroundColor(.primary)
+                                ForegroundColor(themeManager.textColor)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .textSelection(.enabled)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 10)
                             .background(Color(nsColor: .controlBackgroundColor))
-                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     }
                     
                     if !message.isStreaming && !message.text.isEmpty {

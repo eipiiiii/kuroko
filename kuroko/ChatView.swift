@@ -3,12 +3,13 @@ import MarkdownUI
 
 struct ChatView: View {
     @Bindable var viewModel: KurokoViewModel
+    @Environment(ThemeManager.self) private var themeManager
     @FocusState var isInputFocused: Bool
     
     var body: some View {
         ZStack {
             #if os(iOS)
-            Color(uiColor: .systemBackground).ignoresSafeArea()
+            themeManager.backgroundColor.ignoresSafeArea()
             #endif
             
             VStack(spacing: 0) {
@@ -75,7 +76,7 @@ struct ChatView: View {
                 #if os(iOS)
                 .padding(.horizontal)
                 .padding(.bottom, 8)
-                .background(Color(uiColor: .systemBackground))
+                .background(themeManager.backgroundColor)
                 #endif
             }
         }
