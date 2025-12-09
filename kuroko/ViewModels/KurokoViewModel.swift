@@ -13,6 +13,10 @@ class KurokoViewModel {
     var isLoading: Bool = false
     var errorMessage: String?
     
+    // MARK: - Task Management
+    private var currentTask: Task<Void, Never>?
+    private var lastUserMessage: String?
+    
     // MARK: - Services (Dependency Injection)
     private let configService: APIConfigurationService
     private let geminiService: GeminiServiceProtocol
@@ -47,6 +51,36 @@ class KurokoViewModel {
         }
     }
     
+    func stopGeneration() {
+        currentTask?.cancel()
+        currentTask = nil
+        isLoading = false
+        
+        // Mark last message as stopped
+        if let lastIndex = messages.indices.last,
+           messages[lastIndex].isStreaming {
+            messages[lastIndex].isStreaming = false
+            if !messages[lastIndex].text.isEmpty {
+                messages[lastIndex].text += "\n\n⚠️ 生成を停止しました"
+            }
+        }
+    }
+    
+    func retryLastMessage() {
+        guard let lastMessage = lastUserMessage else { return }
+        
+        // Remove last AI response if present and it's an error or empty
+        if let lastIndex = messages.indices.last,
+           messages[lastIndex].role == .model {
+            messages.removeLast()
+        }
+        
+        errorMessage = nil
+        inputText = lastMessage
+        sendMessage()
+    }
+    
+    
     @MainActor
     func sendMessage() {
         updateModelConfiguration()
@@ -66,10 +100,13 @@ class KurokoViewModel {
         messages.append(ChatMessage(role: .user, text: userMessage))
         isLoading = true
         
+        // Store for retry functionality
+        lastUserMessage = userMessage
+        
         let aiMessageIndex = messages.count
         messages.append(ChatMessage(role: .model, text: "", isStreaming: true))
         
-        Task {
+        currentTask = Task {
             do {
                 if configService.selectedProvider == "gemini" {
                     try await sendGeminiMessage(userMessage: userMessage, aiMessageIndex: aiMessageIndex)

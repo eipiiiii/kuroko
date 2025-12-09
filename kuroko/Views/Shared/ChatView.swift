@@ -69,10 +69,23 @@ struct ChatView: View {
                 }
                 
                 // Input Area
-                InputArea(text: $viewModel.inputText, isLoading: viewModel.isLoading, isFocused: $isInputFocused) {
-                    viewModel.sendMessage()
-                    isInputFocused = false
-                }
+                InputArea(
+                    text: $viewModel.inputText,
+                    isLoading: viewModel.isLoading,
+                    hasError: viewModel.errorMessage != nil,
+                    isFocused: $isInputFocused,
+                    onSend: {
+                        viewModel.sendMessage()
+                        isInputFocused = false
+                    },
+                    onStop: {
+                        viewModel.stopGeneration()
+                    },
+                    onRetry: {
+                        viewModel.retryLastMessage()
+                        isInputFocused = false
+                    }
+                )
                 #if os(iOS)
                 .padding(.horizontal)
                 .padding(.bottom, 8)
