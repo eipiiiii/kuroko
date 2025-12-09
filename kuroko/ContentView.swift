@@ -322,7 +322,7 @@ Current date and time: [DYNAMIC_TIMESTAMP]
         let responseString = String(data: data, encoding: .utf8) ?? ""
         let lines = responseString.components(separatedBy: "\n")
         
-        var currentToolCall: ToolCall? = nil
+
         var currentToolId: String = ""
         var currentFunctionName: String = ""
         var currentFunctionArgs: String = ""
@@ -601,7 +601,7 @@ struct MessageBubble: View {
                 Spacer()
                 Text(message.text)
                     .font(.system(size: 16, weight: .regular))
-                    .foregroundStyle(themeManager.textColorOnMain) // Text color adapts to main color
+                    .foregroundStyle(themeManager.textColorOnMain)
                     // However, to be "native" usually user bubbles are Blue/Green and text is White.
                     // The previous code had a Dark Gray bubble with Light text.
                     // Let's stick to a Native Look: User = AccentColor, Text = White.
@@ -613,7 +613,7 @@ struct MessageBubble: View {
                     .padding(.vertical, 12)
                     .background(themeManager.mainColor) // User bubble uses Main Color
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .frame(maxWidth: UIScreen.main.bounds.width * 0.75, alignment: .trailing)
+                    .frame(maxWidth: 300, alignment: .trailing)
             }
         } else {
             VStack(alignment: .leading, spacing: 6) {

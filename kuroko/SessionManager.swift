@@ -227,23 +227,30 @@ class SessionManager {
         let legacyFileName = "\(sessionToSave.id.uuidString).md"
         let legacyFileURL = directoryURL.appendingPathComponent(legacyFileName)
         
-        // 保存処理をバックグラウンドで実行
-        Task.detached(priority: .background) {
-            do {
-                let encoder = JSONEncoder()
-                encoder.outputFormatting = .prettyPrinted
-                encoder.dateEncodingStrategy = .iso8601
-                let data = try encoder.encode(sessionToSave)
-                try data.write(to: fileURL, options: .atomic)
-                
-                // 保存に成功したら、古いMDファイルを削除（移行完了）
-                if FileManager.default.fileExists(atPath: legacyFileURL.path) {
-                    try FileManager.default.removeItem(at: legacyFileURL)
-                    print("Legacy markdown file migrated and deleted: \(legacyFileName)")
+        
+        // エンコード処理をメインアクターで実行してからバックグラウンドで保存
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = .prettyPrinted
+            encoder.dateEncodingStrategy = .iso8601
+            let data = try encoder.encode(sessionToSave)
+            
+            // 保存処理をバックグラウンドで実行
+            Task.detached(priority: .background) {
+                do {
+                    try data.write(to: fileURL, options: .atomic)
+                    
+                    // 保存に成功したら、古いMDファイルを削除（移行完了）
+                    if FileManager.default.fileExists(atPath: legacyFileURL.path) {
+                        try FileManager.default.removeItem(at: legacyFileURL)
+                        print("Legacy markdown file migrated and deleted: \(legacyFileName)")
+                    }
+                } catch {
+                    print("セッション保存エラー: \(error)")
                 }
-            } catch {
-                print("セッション保存エラー: \(error)")
             }
+        } catch {
+            print("セッションエンコードエラー: \(error)")
         }
         
         // メモリ内のデータを更新

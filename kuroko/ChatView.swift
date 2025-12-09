@@ -59,7 +59,7 @@ struct ChatView: View {
                         }
                     }
                     .scrollDismissesKeyboard(.interactively)
-                    .onChange(of: viewModel.messages.last?.text) { _ in
+                    .onChange(of: viewModel.messages.last?.text) { oldValue, newValue in
                         DispatchQueue.main.async {
                             if let lastId = viewModel.messages.last?.id {
                                 proxy.scrollTo(lastId, anchor: .bottom)
