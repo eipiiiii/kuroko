@@ -95,6 +95,19 @@ struct IOSSettingsView: View {
                    }
                 }
                 
+                Section(header: Text("File System")) {
+                    NavigationLink(destination: FileAccessSettingsView(fileAccessManager: FileAccessManager.shared)) {
+                        HStack {
+                            Text("Working Directory")
+                            Spacer()
+                            if FileAccessManager.shared.workingDirectoryURL != nil {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
+                            }
+                        }
+                    }
+                }
+                
                 Section(header: Text("General")) {
                     NavigationLink(destination: ConversationHistorySettingsView(sessionManager: sessionManager)) {
                         Text("Conversation Save Location")

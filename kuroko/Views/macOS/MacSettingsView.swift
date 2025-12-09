@@ -32,6 +32,11 @@ struct MacSettingsView: View {
                 .tabItem {
                     Label("Search", systemImage: "magnifyingglass")
                 }
+            
+            FileAccessSettingsView(fileAccessManager: FileAccessManager.shared)
+                .tabItem {
+                    Label("Files", systemImage: "folder")
+                }
         }
         .padding()
         .frame(width: 500, height: 450)

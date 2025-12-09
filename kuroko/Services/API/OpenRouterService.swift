@@ -93,8 +93,15 @@ class OpenRouterService: OpenRouterServiceProtocol {
         ]
         
         // Add tools if search is configured
-        let toolsEnabled = !configService.googleSearchApiKey.isEmpty && !configService.googleSearchEngineId.isEmpty
-        if toolsEnabled {
+        let searchToolsEnabled = !configService.googleSearchApiKey.isEmpty && !configService.googleSearchEngineId.isEmpty
+        
+        // Check if file system access is configured
+        let fileAccessManager = FileAccessManager.shared
+        let fileSystemEnabled = fileAccessManager.workingDirectoryURL != nil
+        
+        var tools: [[String: Any]] = []
+        
+        if searchToolsEnabled {
             let googleSearchTool: [String: Any] = [
                 "type": "function",
                 "function": [
@@ -112,7 +119,91 @@ class OpenRouterService: OpenRouterServiceProtocol {
                     ]
                 ]
             ]
-            requestBody["tools"] = [googleSearchTool]
+            tools.append(googleSearchTool)
+        }
+        
+        if fileSystemEnabled {
+            let listDirectoryTool: [String: Any] = [
+                "type": "function",
+                "function": [
+                    "name": "list_directory",
+                    "description": "List files and directories in the specified path within the working directory.",
+                    "parameters": [
+                        "type": "object",
+                        "properties": [
+                            "path": [
+                                "type": "string",
+                                "description": "Relative path from working directory (use '.' for current directory)"
+                            ]
+                        ],
+                        "required": ["path"]
+                    ]
+                ]
+            ]
+            
+            let readFileTool: [String: Any] = [
+                "type": "function",
+                "function": [
+                    "name": "read_file",
+                    "description": "Read the contents of a text file.",
+                    "parameters": [
+                        "type": "object",
+                        "properties": [
+                            "path": [
+                                "type": "string",
+                                "description": "Relative path to the file from working directory"
+                            ]
+                        ],
+                        "required": ["path"]
+                    ]
+                ]
+            ]
+            
+            let writeFileTool: [String: Any] = [
+                "type": "function",
+                "function": [
+                    "name": "write_file",
+                    "description": "Write content to a file (creates new file or overwrites existing).",
+                    "parameters": [
+                        "type": "object",
+                        "properties": [
+                            "path": [
+                                "type": "string",
+                                "description": "Relative path to the file from working directory"
+                            ],
+                            "content": [
+                                "type": "string",
+                                "description": "Content to write to the file"
+                            ]
+                        ],
+                        "required": ["path", "content"]
+                    ]
+                ]
+            ]
+            
+            let deleteFileTool: [String: Any] = [
+                "type": "function",
+                "function": [
+                    "name": "delete_file",
+                    "description": "Delete a file. Use with caution as this operation cannot be undone.",
+                    "parameters": [
+                        "type": "object",
+                        "properties": [
+                            "path": [
+                                "type": "string",
+                                "description": "Relative path to the file from working directory"
+                            ]
+                        ],
+                        "required": ["path"]
+                    ]
+                ]
+            ]
+            
+            tools.append(contentsOf: [listDirectoryTool, readFileTool, writeFileTool, deleteFileTool])
+        }
+        
+        if !tools.isEmpty {
+            requestBody["tools"] = tools
         }
         
         request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
@@ -175,23 +266,79 @@ class OpenRouterService: OpenRouterServiceProtocol {
     
     /// Execute a tool call and return the result
     func executeToolCall(_ toolCall: ToolCall) async throws -> String {
-        guard toolCall.function.name == "google_search" else {
-            throw OpenRouterServiceError.unsupportedTool(toolCall.function.name)
-        }
+        let functionName = toolCall.function.name
         
         // Parse arguments
         guard let argsData = toolCall.function.arguments.data(using: .utf8),
-              let argsDict = try? JSONSerialization.jsonObject(with: argsData) as? [String: Any],
-              let query = argsDict["query"] as? String else {
+              let argsDict = try? JSONSerialization.jsonObject(with: argsData) as? [String: Any] else {
             throw OpenRouterServiceError.invalidToolArguments
         }
         
-        // Execute search
-        return try await searchService.performSearch(
-            query: query,
-            apiKey: configService.googleSearchApiKey,
-            engineId: configService.googleSearchEngineId
-        )
+        switch functionName {
+        case "google_search":
+            guard let query = argsDict["query"] as? String else {
+                throw OpenRouterServiceError.invalidToolArguments
+            }
+            return try await searchService.performSearch(
+                query: query,
+                apiKey: configService.googleSearchApiKey,
+                engineId: configService.googleSearchEngineId
+            )
+            
+        case "list_directory":
+            guard let path = argsDict["path"] as? String else {
+                throw OpenRouterServiceError.invalidToolArguments
+            }
+            let fileSystemService = FileSystemService.shared
+            let listing = try await fileSystemService.listDirectory(path: path)
+            
+            // Format the result as a readable string
+            var result = "📂 Directory: \(listing.path)\n"
+            result += "Total items: \(listing.totalCount)\n\n"
+            
+            for file in listing.files {
+                let icon = file.isDirectory ? "📁" : "📄"
+                let size = file.size.map { "\($0) bytes" } ?? ""
+                result += "\(icon) \(file.name) \(size)\n"
+            }
+            
+            return result
+            
+        case "read_file":
+            guard let path = argsDict["path"] as? String else {
+                throw OpenRouterServiceError.invalidToolArguments
+            }
+            let fileSystemService = FileSystemService.shared
+            let content = try await fileSystemService.readFile(path: path)
+            return "📄 File: \(path)\n\n\(content)"
+            
+        case "write_file":
+            guard let path = argsDict["path"] as? String,
+                  let content = argsDict["content"] as? String else {
+                throw OpenRouterServiceError.invalidToolArguments
+            }
+            let fileSystemService = FileSystemService.shared
+            
+            // Check if file exists to determine create vs write
+            if fileSystemService.fileExists(path: path) {
+                try await fileSystemService.writeFile(path: path, content: content)
+                return "✅ File updated successfully: \(path)"
+            } else {
+                try await fileSystemService.createFile(path: path, content: content)
+                return "✅ File created successfully: \(path)"
+            }
+            
+        case "delete_file":
+            guard let path = argsDict["path"] as? String else {
+                throw OpenRouterServiceError.invalidToolArguments
+            }
+            let fileSystemService = FileSystemService.shared
+            try await fileSystemService.deleteFile(path: path)
+            return "✅ File deleted successfully: \(path)"
+            
+        default:
+            throw OpenRouterServiceError.unsupportedTool(functionName)
+        }
     }
 }
 
