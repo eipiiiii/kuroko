@@ -12,6 +12,11 @@ struct MacSettingsView: View {
                     Label("General", systemImage: "gear")
                 }
             
+            MacAppearanceSettingsView()
+                .tabItem {
+                    Label("Appearance", systemImage: "paintbrush")
+                }
+            
             MacModelSettingsView()
                 .tabItem {
                     Label("Models", systemImage: "cpu")
@@ -63,6 +68,28 @@ struct MacGeneralSettingsView: View {
                 print("Folder selection error: \(error)")
             }
         }
+    }
+}
+
+struct MacAppearanceSettingsView: View {
+    @Environment(ThemeManager.self) private var themeManager
+    
+    var body: some View {
+        Form {
+            Picker("Theme", selection: Bindable(themeManager).currentTheme) {
+                ForEach(AppTheme.allCases) { theme in
+                    Text(theme.displayName).tag(theme)
+                }
+            }
+            .pickerStyle(.inline)
+            
+            Text("Select your preferred color theme.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.top, 4)
+        }
+        .formStyle(.grouped)
+        .padding()
     }
 }
 

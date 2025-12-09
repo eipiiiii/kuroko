@@ -34,12 +34,24 @@ struct IOSSettingsView: View {
     @AppStorage("selectedProvider") private var selectedProvider: String = "gemini"
     @AppStorage("selectedModel") private var selectedModel: String = "gemini-1.5-flash-latest"
     @Bindable var sessionManager: SessionManager
+    @Environment(ThemeManager.self) private var themeManager
     
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
         NavigationStack {
             Form {
+                Section(header: Text("Appearance")) {
+                    NavigationLink(destination: ThemeSettingsView()) {
+                        HStack {
+                            Text("Theme")
+                            Spacer()
+                            Text(themeManager.currentTheme.displayName)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                
                 Section(header: Text("Model Provider")) {
                     NavigationLink(destination: GeminiSettingsView()) {
                         HStack {
@@ -319,6 +331,43 @@ struct SystemPromptSettingsView: View {
 }
 #endif
 
+
+
+struct ThemeSettingsView: View {
+    @Environment(ThemeManager.self) private var themeManager
+    
+    var body: some View {
+        Form {
+            Section {
+                ForEach(AppTheme.allCases) { theme in
+                    Button(action: {
+                        themeManager.currentTheme = theme
+                    }) {
+                        HStack {
+                            Text(theme.displayName)
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            if themeManager.currentTheme == theme {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(themeManager.accentColor)
+                            }
+                        }
+                    }
+                }
+            } header: {
+                Text("App Theme")
+            } footer: {
+                Text("Select your preferred color theme.")
+            }
+        }
+        .navigationTitle("Appearance")
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
+    }
+}
+
 #Preview {
     SettingsView(sessionManager: SessionManager())
+        .environment(ThemeManager())
 }

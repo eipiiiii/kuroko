@@ -291,6 +291,14 @@ extension Color {
         return Color.white.opacity(0.6)
         #endif
     }
+    
+    static var invertedPrimary: Color {
+        #if os(iOS)
+        return Color(uiColor: .systemBackground)
+        #else
+        return Color(nsColor: .textBackgroundColor)
+        #endif
+    }
 }
 
 #if os(macOS)
@@ -331,6 +339,7 @@ extension View {
 // MARK: - Views
 
 struct ContentView: View {
+    @Environment(ThemeManager.self) private var themeManager
     @State private var viewModel = KurokoViewModel()
     @State private var isShowingSettings = false
     @State private var isShowingHistory = false
@@ -399,6 +408,7 @@ struct ContentView: View {
 // メッセージのレイアウト
 struct MessageBubble: View {
     let message: ChatMessage
+    @Environment(ThemeManager.self) private var themeManager
     
     var body: some View {
         #if os(iOS)
@@ -408,7 +418,7 @@ struct MessageBubble: View {
                 Spacer()
                 Text(message.text)
                     .font(.system(size: 16, weight: .regular))
-                    .foregroundStyle(.white) // User bubbles often keep white text on dark/colored bubbles even in Light Mode if the bubble is dark.
+                    .foregroundStyle(themeManager.textColorOnAccent) // Text color adapts to theme
                     // However, to be "native" usually user bubbles are Blue/Green and text is White.
                     // The previous code had a Dark Gray bubble with Light text.
                     // Let's stick to a Native Look: User = AccentColor, Text = White.
@@ -418,7 +428,7 @@ struct MessageBubble: View {
                     // If I switch to Native, User bubble -> Blue, Assistant -> Clear.
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
-                    .background(Color.accentColor) // Native-like accent color
+                    .background(themeManager.accentColor) // Dynamic theme color
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                     .frame(maxWidth: UIScreen.main.bounds.width * 0.75, alignment: .trailing)
             }
@@ -428,7 +438,7 @@ struct MessageBubble: View {
                 HStack(spacing: 8) {
                     Image(systemName: "sparkles")
                         .font(.system(size: 14))
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(themeManager.accentColor)
                     
                     Text("Answer")
                         .font(.caption)
@@ -479,10 +489,10 @@ struct MessageBubble: View {
                 
                 Text(message.text)
                     .font(.body)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(themeManager.textColorOnAccent)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
-                    .background(Color.accentColor)
+                    .background(themeManager.accentColor)
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .frame(maxWidth: 400, alignment: .trailing)
             } else {
@@ -538,6 +548,7 @@ struct ActionButton: View {
 
 // 入力エリアUI
 struct InputArea: View {
+    @Environment(ThemeManager.self) private var themeManager
     @Binding var text: String
     var isLoading: Bool
     var isFocused: FocusState<Bool>.Binding
@@ -570,9 +581,9 @@ struct InputArea: View {
                 Button(action: onSend) {
                     Image(systemName: text.isEmpty ? "mic.fill" : "arrow.up")
                         .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(text.isEmpty ? Color.secondary : Color.white)
+                        .foregroundStyle(text.isEmpty ? Color.secondary : themeManager.textColorOnAccent)
                         .frame(width: 30, height: 30)
-                        .background(text.isEmpty ? Color.clear : Color.accentColor) // Use accent color for send button
+                        .background(text.isEmpty ? Color.clear : themeManager.accentColor) // Use theme color for send button
                         .clipShape(Circle())
                 }
                 .disabled(isLoading)
@@ -599,7 +610,7 @@ struct InputArea: View {
             Button(action: onSend) {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 28))
-                    .foregroundStyle(text.isEmpty ? .gray : Color.accentColor)
+                    .foregroundStyle(text.isEmpty ? .gray : themeManager.accentColor)
             }
             .buttonStyle(.plain)
             .disabled(text.isEmpty || isLoading)
