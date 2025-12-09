@@ -76,15 +76,19 @@ struct SessionHistoryView: View {
                                 }
                             }
                         }
-                        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "会話を検索")
+
+                        .searchable(text: $searchText, placement: .automatic, prompt: "会話を検索")
                         .scrollContentBackground(.hidden)
                     }
                 }
             }
             .navigationTitle("会話履歴")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            #endif
             .toolbar {
+                #if os(iOS)
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("閉じる") {
                         dismiss()
@@ -102,6 +106,23 @@ struct SessionHistoryView: View {
                         }
                     }
                 }
+                #else
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("閉じる") {
+                        dismiss()
+                    }
+                }
+                
+                if sessionManager.saveDirectoryURL != nil {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            sessionManager.loadSessions()
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                    }
+                }
+                #endif
             }
             .onAppear {
                 if sessionManager.saveDirectoryURL != nil {

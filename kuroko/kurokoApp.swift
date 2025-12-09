@@ -13,5 +13,11 @@ struct kurokoApp: App {
         WindowGroup {
             ContentView()
         }
+        
+        #if os(macOS)
+        Settings {
+            SettingsView(sessionManager: SessionManager.shared)
+        }
+        #endif
     }
 }

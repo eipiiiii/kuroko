@@ -1,0 +1,86 @@
+import SwiftUI
+import MarkdownUI
+
+struct ChatView: View {
+    @Bindable var viewModel: KurokoViewModel
+    @FocusState var isInputFocused: Bool
+    
+    var body: some View {
+        ZStack {
+            #if os(iOS)
+            Color(red: 0.05, green: 0.05, blue: 0.05).ignoresSafeArea()
+            #endif
+            
+            VStack(spacing: 0) {
+                // Chat List
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        // Center content on wide screens (macOS)
+                        HStack {
+                            Spacer()
+                            
+                            LazyVStack(spacing: 24) {
+                                // Welcome Message
+                                if viewModel.messages.isEmpty && viewModel.errorMessage == nil {
+                                    ContentUnavailableView {
+                                        Image(systemName: "magnifyingglass")
+                                            .font(.system(size: 40))
+                                            .foregroundStyle(.secondary)
+                                    } description: {
+                                        Text("知りたいことは何ですか？")
+                                            .font(.title3)
+                                            .fontWeight(.medium)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .padding(.top, 100)
+                                }
+                                
+                                ForEach(viewModel.messages) { message in
+                                    MessageBubble(message: message)
+                                        .id(message.id)
+                                }
+                                
+                                if let error = viewModel.errorMessage {
+                                    Text(error)
+                                        .font(.caption)
+                                        .foregroundStyle(.red)
+                                        .padding()
+                                }
+                                
+                                // Clean spacing at bottom
+                                Color.clear.frame(height: 20)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.top, 16)
+                            .frame(maxWidth: 800) // Limit max width for readability on macOS
+                            
+                            Spacer()
+                        }
+                    }
+                    .scrollDismissesKeyboard(.interactively)
+                    .onChange(of: viewModel.messages.last?.text) { _ in
+                        DispatchQueue.main.async {
+                            if let lastId = viewModel.messages.last?.id {
+                                proxy.scrollTo(lastId, anchor: .bottom)
+                            }
+                        }
+                    }
+                }
+                
+                // Input Area
+                InputArea(text: $viewModel.inputText, isLoading: viewModel.isLoading, isFocused: $isInputFocused) {
+                    viewModel.sendMessage()
+                    isInputFocused = false
+                }
+                #if os(iOS)
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+                .background(Color(red: 0.05, green: 0.05, blue: 0.05))
+                #endif
+            }
+        }
+        .onTapGesture {
+            isInputFocused = false
+        }
+    }
+}

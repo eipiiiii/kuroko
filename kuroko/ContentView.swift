@@ -39,7 +39,7 @@ class KurokoViewModel {
     private var model: GenerativeModel?
     private var systemPrompt: String = ""
     
-    init(sessionManager: SessionManager = SessionManager()) {
+    init(sessionManager: SessionManager = SessionManager.shared) {
         self.sessionManager = sessionManager
         self.apiKey = UserDefaults.standard.string(forKey: "apiKey") ?? ""
         self.openRouterApiKey = UserDefaults.standard.string(forKey: "openRouterApiKey") ?? ""
@@ -86,6 +86,7 @@ class KurokoViewModel {
     
     @MainActor
     func sendMessage() {
+        updateModelConfiguration()
         guard !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         
         let userMessage = inputText
@@ -280,11 +281,32 @@ class KurokoViewModel {
     }
 }
 
+// MARK: - Cross Platform Extensions
+
+extension Color {
+    static var lightText: Color {
+        #if os(iOS)
+        return Color(uiColor: .lightText)
+        #else
+        return Color.white.opacity(0.6)
+        #endif
+    }
+}
+
+#if os(macOS)
+// macOS doesn't have UIScreen
+struct ScreenSize {
+    static var width: CGFloat {
+        NSScreen.main?.frame.width ?? 1024
+    }
+}
+#endif
+
 // MARK: - View Extensions
 
 extension View {
+    #if os(iOS)
     func screen() -> UIScreen? {
-        #if os(iOS)
         // iOS 26向けにUIWindowSceneを使用
         for scene in UIApplication.shared.connectedScenes {
             if let windowScene = scene as? UIWindowScene {
@@ -295,9 +317,13 @@ extension View {
                 }
             }
         }
-        #endif
         return nil
     }
+    #else
+    func screen() -> Any? {
+        return nil
+    }
+    #endif
 }
 
 
@@ -311,157 +337,100 @@ struct ContentView: View {
     @FocusState private var isInputFocused: Bool
     
     var body: some View {
+        #if os(macOS)
+        // macOS: NavigationSplitView with Sidebar
+        NavigationSplitView {
+            SidebarView(sessionManager: viewModel.sessionManager, viewModel: viewModel)
+                .navigationSplitViewColumnWidth(min: 250, ideal: 300)
+        } detail: {
+            ChatView(viewModel: viewModel)
+                #if os(macOS)
+                .background(Color(nsColor: .windowBackgroundColor)) // Native macOS background
+                #endif
+        }
+        .navigationTitle(viewModel.sessionManager.currentSession?.title ?? "kuroko")
+        #else
+        // iOS: Existing NavigationStack Layout
         NavigationStack {
-            ZStack {
-                // Perplexity風の深い黒背景
-                Color(red: 0.05, green: 0.05, blue: 0.05).ignoresSafeArea()
-                
-                VStack(spacing: 0) {
-                    // Chat List
-                    ScrollViewReader { proxy in
-                        ScrollView {
-                            // メッセージ全体の余白設定
-                            LazyVStack(spacing: 24) {
-                                // ウェルカムメッセージ
-                                if viewModel.messages.isEmpty && viewModel.errorMessage == nil {
-                                    ContentUnavailableView {
-                                        Image(systemName: "magnifyingglass")
-                                            .font(.system(size: 40))
-                                            .foregroundStyle(.gray)
-                                    } description: {
-                                        Text("知りたいことは何ですか？")
-                                            .font(.title3)
-                                            .fontWeight(.medium)
-                                            .foregroundStyle(.white)
-                                    }
-                                    .padding(.top, 100)
-                                }
-                                
-                                ForEach(viewModel.messages) { message in
-                                    MessageBubble(message: message)
-                                        .id(message.id)
-                                }
-                                
-                                if let error = viewModel.errorMessage {
-                                    Text(error)
-                                        .font(.caption)
-                                        .foregroundStyle(.red)
-                                        .padding()
-                                }
-                                
-                                // 下部の余白（入力欄とかぶらないように）
-                                Color.clear.frame(height: 20)
-                            }
-                            .padding(.horizontal, 16) // 画面端からの余白
-                            .padding(.top, 16)
-                        }
-                        .scrollDismissesKeyboard(.interactively) // スクロールでキーボードを閉じる
-                        .onChange(of: viewModel.messages.last?.text) { _ in
-                            DispatchQueue.main.async {
-                                if let lastId = viewModel.messages.last?.id {
-                                    proxy.scrollTo(lastId, anchor: .bottom)
-                                }
-                            }
+            ChatView(viewModel: viewModel)
+                .navigationTitle("kuroko")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button(action: { isShowingHistory = true }) {
+                            Image(systemName: "clock.arrow.circlepath")
                         }
                     }
                     
-                    // Input Area
-                    InputArea(text: $viewModel.inputText, isLoading: viewModel.isLoading, isFocused: $isInputFocused) {
-                        viewModel.sendMessage()
-                        isInputFocused = false
-                    }
-                    .padding(.horizontal)
-                    .padding(.bottom, 8)
-                    .background(Color(red: 0.05, green: 0.05, blue: 0.05)) // 背景と同じ色で溶け込ませる
-                }
-            }
-            .onTapGesture {
-                isInputFocused = false // 背景タップでキーボードを閉じる
-            }
-            .navigationTitle("kuroko")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button(action: { isShowingHistory = true }) {
-                        Image(systemName: "clock.arrow.circlepath")
-                            .foregroundStyle(.white)
-                    }
-                }
-                
-                ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: 16) {
-                        Button(action: { 
-                            viewModel.startNewSession()
-                        }) {
-                            Image(systemName: "square.and.pencil")
-                                .foregroundStyle(.white)
-                        }
-                        
-                        Button(action: { isShowingSettings = true }) {
-                            Image(systemName: "slider.horizontal.3")
-                                .foregroundStyle(.white)
+                    ToolbarItem(placement: .topBarTrailing) {
+                        HStack(spacing: 16) {
+                            Button(action: { 
+                                viewModel.startNewSession()
+                            }) {
+                                Image(systemName: "square.and.pencil")
+                            }
+                            
+                            Button(action: { isShowingSettings = true }) {
+                                Image(systemName: "slider.horizontal.3")
+                            }
                         }
                     }
                 }
-            }
-            .sheet(isPresented: $isShowingSettings) {
-                SettingsView(sessionManager: viewModel.sessionManager)
-                    .preferredColorScheme(.dark)
-                    .onDisappear {
-                        viewModel.updateModelConfiguration()
-                    }
-            }
-            .sheet(isPresented: $isShowingHistory) {
-                SessionHistoryView(sessionManager: viewModel.sessionManager)
-                    .onDisappear {
-                        viewModel.loadCurrentSession()
-                    }
-            }
+                .sheet(isPresented: $isShowingSettings) {
+                    SettingsView(sessionManager: viewModel.sessionManager)
+                        .preferredColorScheme(.dark)
+                        .onDisappear {
+                            viewModel.updateModelConfiguration()
+                        }
+                }
+                .sheet(isPresented: $isShowingHistory) {
+                    SessionHistoryView(sessionManager: viewModel.sessionManager)
+                        .preferredColorScheme(.dark)
+                        .onDisappear {
+                            viewModel.loadCurrentSession()
+                        }
+                }
         }
-        .preferredColorScheme(.dark)
+        #endif
     }
 }
+
 
 // メッセージのレイアウト
 struct MessageBubble: View {
     let message: ChatMessage
     
     var body: some View {
-        // Roleによって完全にレイアウトを分ける
+        #if os(iOS)
+        // iOS: Perplexity-style Layout
         if message.role == .user {
-            // MARK: User Message (Right Aligned)
             HStack {
-                Spacer() // 左を埋めて右に寄せる
-                
+                Spacer()
                 Text(message.text)
                     .font(.system(size: 16, weight: .regular))
-                    .foregroundStyle(Color(uiColor: .lightText))
+                    .foregroundStyle(Color.lightText)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
-                    .background(Color(red: 0.15, green: 0.15, blue: 0.15)) // Perplexity風の濃いグレー
+                    .background(Color(red: 0.15, green: 0.15, blue: 0.15))
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    // 最大幅を画面の75%程度に制限
-                    .frame(maxWidth: screen()?.bounds.width ?? 375 * 0.75, alignment: .trailing)
+                    .frame(maxWidth: UIScreen.main.bounds.width * 0.75, alignment: .trailing)
             }
         } else {
-            // MARK: AI Message (Left Aligned)
             VStack(alignment: .leading, spacing: 6) {
-                // ヘッダー（アイコン + 名前）
+                // Header
                 HStack(spacing: 8) {
                     Image(systemName: "sparkles")
                         .font(.system(size: 14))
-                        .foregroundStyle(.cyan) // Perplexityっぽいシアン色
+                        .foregroundStyle(.cyan)
                     
                     Text("Answer")
                         .font(.caption)
                         .fontWeight(.bold)
                         .foregroundStyle(.white)
-                    
                     Spacer()
                 }
                 
-                // 本文
+                // Content
                 if message.text.isEmpty && message.isStreaming {
                     HStack {
                         ProgressView()
@@ -477,14 +446,14 @@ struct MessageBubble: View {
                         .id(message.id)
                         .markdownTextStyle {
                             FontSize(16)
-                            ForegroundColor(.primary)
+                            ForegroundColor(.white)
                             FontWeight(.regular)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
                 }
                 
-                // アクションボタン（生成完了後のみ）
+                // Actions
                 if !message.isStreaming && !message.text.isEmpty {
                     HStack(spacing: 20) {
                         ActionButton(icon: "doc.on.doc")
@@ -495,6 +464,54 @@ struct MessageBubble: View {
                 }
             }
         }
+        #else
+        // macOS: Native Layout
+        HStack {
+            if message.role == .user {
+                Spacer()
+                
+                Text(message.text)
+                    .font(.body)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.accentColor)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .frame(maxWidth: 400, alignment: .trailing)
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    if message.text.isEmpty && message.isStreaming {
+                        ProgressView()
+                            .controlSize(.small)
+                            .padding(.leading, 4)
+                    } else {
+                        Markdown(message.text)
+                            .id(message.id)
+                            .markdownTextStyle {
+                                FontSize(16)
+                                ForegroundColor(.primary)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(Color(nsColor: .controlBackgroundColor))
+                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    }
+                    
+                    if !message.isStreaming && !message.text.isEmpty {
+                        HStack(spacing: 12) {
+                            ActionButton(icon: "doc.on.doc")
+                            ActionButton(icon: "arrowshape.turn.up.right")
+                        }
+                        .padding(.leading, 8)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Spacer()
+            }
+        }
+        #endif
     }
 }
 
@@ -506,8 +523,9 @@ struct ActionButton: View {
         Button(action: {}) {
             Image(systemName: icon)
                 .font(.system(size: 14))
-                .foregroundStyle(.gray)
+                .foregroundStyle(.secondary)
         }
+        .buttonStyle(.plain)
     }
 }
 
@@ -519,8 +537,9 @@ struct InputArea: View {
     var onSend: () -> Void
     
     var body: some View {
+        #if os(iOS)
+        // iOS: Capsule Style Input
         HStack(alignment: .bottom, spacing: 10) {
-            // 左側のプラスボタン
             Button(action: {}) {
                 Image(systemName: "plus")
                     .font(.system(size: 20))
@@ -530,36 +549,59 @@ struct InputArea: View {
                     .clipShape(Circle())
             }
             
-            // 入力フィールド（カプセル型）
             ZStack(alignment: .bottomTrailing) {
                 TextField("質問する...", text: $text, axis: .vertical)
                     .focused(isFocused)
                     .padding(.leading, 16)
-                    .padding(.trailing, 40) // 送信ボタン分の余白
+                    .padding(.trailing, 40)
                     .padding(.vertical, 12)
                     .background(Color(red: 0.15, green: 0.15, blue: 0.15))
                     .cornerRadius(25)
                     .lineLimit(1...5)
+                    .foregroundStyle(.white)
                 
-                // 送信ボタン（入力内配置）
                 Button(action: onSend) {
                     Image(systemName: text.isEmpty ? "mic.fill" : "arrow.up")
                         .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(text.isEmpty ? .gray : .black) // 入力ありで黒文字
+                        .foregroundStyle(text.isEmpty ? .gray : .black)
                         .frame(width: 30, height: 30)
-                        .background(text.isEmpty ? Color.clear : Color.cyan) // 入力ありでシアン背景
+                        .background(text.isEmpty ? Color.clear : Color.cyan)
                         .clipShape(Circle())
                 }
                 .disabled(isLoading)
-                .padding(.bottom, 9) // 位置微調整
+                .padding(.bottom, 9)
                 .padding(.trailing, 6)
             }
         }
         .padding(.top, 8)
+        #else
+        // macOS: Native Style Input
+        HStack(alignment: .bottom, spacing: 8) {
+            TextField("Message...", text: $text, axis: .vertical)
+                .focused(isFocused)
+                .textFieldStyle(.plain)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background {
+                    RoundedRectangle(cornerRadius: 20)
+                        .strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1)
+                        .background(RoundedRectangle(cornerRadius: 20).fill(Color(nsColor: .controlBackgroundColor)))
+                }
+                .lineLimit(1...5)
+            
+            Button(action: onSend) {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 28))
+                    .foregroundStyle(text.isEmpty ? .gray : Color.accentColor)
+            }
+            .buttonStyle(.plain)
+            .disabled(text.isEmpty || isLoading)
+        }
+        .padding(8)
+        .background(.regularMaterial)
+        #endif
     }
 }
-
-
 
 #Preview {
     ContentView()

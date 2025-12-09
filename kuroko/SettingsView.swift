@@ -2,26 +2,35 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 // MARK: - Data Models
+// Shared models need to be internal/public for the separate MacSettingsView file to access them
 struct OpenRouterModel: Codable, Identifiable {
     let id: String
     let name: String
     let description: String?
     let context_length: Int?
-    // Pricing is not used in the UI for now, but kept for future use.
-    // struct Pricing: Codable {
-    //     let prompt: String?
-    //     let completion: String?
-    //     let request: String?
-    // }
 }
 
-private struct OpenRouterResponse: Decodable {
+struct OpenRouterResponse: Decodable {
     let data: [OpenRouterModel]
 }
 
 
 // MARK: - Main Settings View
 struct SettingsView: View {
+    @Bindable var sessionManager: SessionManager
+    
+    var body: some View {
+        #if os(macOS)
+        MacSettingsView(sessionManager: sessionManager)
+        #else
+        IOSSettingsView(sessionManager: sessionManager)
+        #endif
+    }
+}
+
+#if os(iOS)
+// MARK: - iOS Settings Implementation
+struct IOSSettingsView: View {
     @AppStorage("selectedProvider") private var selectedProvider: String = "gemini"
     @AppStorage("selectedModel") private var selectedModel: String = "gemini-1.5-flash-latest"
     @Bindable var sessionManager: SessionManager
@@ -125,7 +134,9 @@ struct GeminiSettingsView: View {
             selectedProvider = "gemini"
         }
         .navigationTitle("Gemini")
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
         .searchable(text: $searchQuery, prompt: "Search Models")
     }
 }
@@ -177,7 +188,9 @@ struct OpenRouterSettingsView: View {
             }
         }
         .navigationTitle("OpenRouter")
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
         .searchable(text: $searchQuery, prompt: "Search Models")
     }
     
@@ -263,7 +276,9 @@ struct ConversationHistorySettingsView: View {
             }
         }
         .navigationTitle("Save Location")
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
         .fileImporter(
             isPresented: $showingFolderPicker,
             allowedContentTypes: [.folder],
@@ -297,9 +312,12 @@ struct SystemPromptSettingsView: View {
             }
         }
         .navigationTitle("Custom Instructions")
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
     }
 }
+#endif
 
 #Preview {
     SettingsView(sessionManager: SessionManager())

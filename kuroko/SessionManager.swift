@@ -42,6 +42,8 @@ struct SessionMessage: Identifiable, Codable, Equatable {
 // MARK: - Session Manager
 @Observable
 class SessionManager {
+    static let shared = SessionManager()
+    
     var sessions: [ChatSession] = []
     var currentSession: ChatSession?
     var saveDirectoryURL: URL?
@@ -57,11 +59,28 @@ class SessionManager {
     // MARK: - Directory Management
     
     func setSaveDirectory(_ url: URL) {
-        saveDirectoryURL = url
+        // 以前のURLへのアクセスを停止 (もしあれば)
+        if let oldURL = saveDirectoryURL {
+            oldURL.stopAccessingSecurityScopedResource()
+        }
+        
+        // セキュリティスコープリソースへのアクセス開始
+        if url.startAccessingSecurityScopedResource() {
+            saveDirectoryURL = url
+            print("保存ディレクトリを設定: \(url.path)")
+        } else {
+            print("セキュリティスコープリソースへのアクセス失敗 (setSaveDirectory)")
+            // 失敗してもとりあえず設定 (非サンドボックス環境などのため)
+            saveDirectoryURL = url
+        }
         
         // セキュリティスコープ付きブックマークを保存
         do {
+            #if os(macOS)
+            let bookmarkData = try url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+            #else
             let bookmarkData = try url.bookmarkData(options: .minimalBookmark, includingResourceValuesForKeys: nil, relativeTo: nil)
+            #endif
             userDefaults.set(bookmarkData, forKey: saveDirectoryKey)
         } catch {
             print("ブックマーク保存エラー: \(error)")
@@ -80,6 +99,15 @@ class SessionManager {
         
         do {
             var isStale = false
+            #if os(macOS)
+            let url = try URL(resolvingBookmarkData: bookmarkData, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &isStale)
+            
+            if isStale {
+                // ブックマークが古い場合は再作成
+                let newBookmarkData = try url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+                userDefaults.set(newBookmarkData, forKey: saveDirectoryKey)
+            }
+            #else
             let url = try URL(resolvingBookmarkData: bookmarkData, options: .withoutUI, relativeTo: nil, bookmarkDataIsStale: &isStale)
             
             if isStale {
@@ -87,6 +115,7 @@ class SessionManager {
                 let newBookmarkData = try url.bookmarkData(options: .minimalBookmark, includingResourceValuesForKeys: nil, relativeTo: nil)
                 userDefaults.set(newBookmarkData, forKey: saveDirectoryKey)
             }
+            #endif
             
             // セキュリティスコープリソースにアクセス
             if url.startAccessingSecurityScopedResource() {
@@ -142,12 +171,29 @@ class SessionManager {
                 options: [.skipsHiddenFiles]
             )
             
+            // JSONファイルとMDファイルを収集
+            let jsonFiles = fileURLs.filter { $0.pathExtension == "json" }
             let mdFiles = fileURLs.filter { $0.pathExtension == "md" }
             
             var loadedSessions: [ChatSession] = []
-            for fileURL in mdFiles {
-                if let session = loadSessionFromMarkdown(url: fileURL) {
+            var loadedIds: Set<UUID> = []
+            
+            // JSONから読み込み（優先）
+            for fileURL in jsonFiles {
+                if let session = loadSessionFromJSON(url: fileURL) {
                     loadedSessions.append(session)
+                    loadedIds.insert(session.id)
+                }
+            }
+            
+            // MDから読み込み（JSONがない場合のみ）
+            for fileURL in mdFiles {
+                // ファイル名からIDを取得して重複チェック
+                let fileName = fileURL.deletingPathExtension().lastPathComponent
+                if let id = UUID(uuidString: fileName), !loadedIds.contains(id) {
+                     if let session = loadSessionFromMarkdown(url: fileURL) {
+                        loadedSessions.append(session)
+                    }
                 }
             }
             
@@ -168,28 +214,46 @@ class SessionManager {
         var sessionToSave = session
         if sessionToSave.title == "新しい会話" && !sessionToSave.messages.isEmpty {
             let firstUserMessage = sessionToSave.messages.first { $0.role == "user" }?.text ?? "会話"
-            sessionToSave.title = String(firstUserMessage.prefix(30))
+            sessionToSave.title = firstUserMessage.replacingOccurrences(of: "\n", with: " ").prefix(30).trimmingCharacters(in: .whitespaces)
         }
         
         sessionToSave.updatedAt = Date()
         
-        let fileName = "\(sessionToSave.id.uuidString).md"
+        // JSONで保存
+        let fileName = "\(sessionToSave.id.uuidString).json"
         let fileURL = directoryURL.appendingPathComponent(fileName)
         
-        let markdownContent = generateMarkdown(from: sessionToSave)
+        // 古いMDファイルのパス（存在すれば削除するため）
+        let legacyFileName = "\(sessionToSave.id.uuidString).md"
+        let legacyFileURL = directoryURL.appendingPathComponent(legacyFileName)
         
-        do {
-            try markdownContent.write(to: fileURL, atomically: true, encoding: .utf8)
-            currentSession = sessionToSave
-            
-            // セッションリストを更新
-            if let index = sessions.firstIndex(where: { $0.id == sessionToSave.id }) {
-                sessions[index] = sessionToSave
-            } else {
-                sessions.insert(sessionToSave, at: 0)
+        // 保存処理をバックグラウンドで実行
+        Task.detached(priority: .background) {
+            do {
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = .prettyPrinted
+                encoder.dateEncodingStrategy = .iso8601
+                let data = try encoder.encode(sessionToSave)
+                try data.write(to: fileURL, options: .atomic)
+                
+                // 保存に成功したら、古いMDファイルを削除（移行完了）
+                if FileManager.default.fileExists(atPath: legacyFileURL.path) {
+                    try FileManager.default.removeItem(at: legacyFileURL)
+                    print("Legacy markdown file migrated and deleted: \(legacyFileName)")
+                }
+            } catch {
+                print("セッション保存エラー: \(error)")
             }
-        } catch {
-            print("セッション保存エラー: \(error)")
+        }
+        
+        // メモリ内のデータを更新
+        currentSession = sessionToSave
+        
+        // セッションリストを更新
+        if let index = sessions.firstIndex(where: { $0.id == sessionToSave.id }) {
+            sessions[index] = sessionToSave
+        } else {
+            sessions.insert(sessionToSave, at: 0)
         }
     }
     
@@ -200,11 +264,21 @@ class SessionManager {
     func deleteSession(_ session: ChatSession) {
         guard let directoryURL = saveDirectoryURL else { return }
         
-        let fileName = "\(session.id.uuidString).md"
-        let fileURL = directoryURL.appendingPathComponent(fileName)
+        let jsonFileName = "\(session.id.uuidString).json"
+        let jsonFileURL = directoryURL.appendingPathComponent(jsonFileName)
+        
+        let mdFileName = "\(session.id.uuidString).md"
+        let mdFileURL = directoryURL.appendingPathComponent(mdFileName)
         
         do {
-            try FileManager.default.removeItem(at: fileURL)
+            // 両方の可能性を試す
+            if FileManager.default.fileExists(atPath: jsonFileURL.path) {
+                try FileManager.default.removeItem(at: jsonFileURL)
+            }
+            if FileManager.default.fileExists(atPath: mdFileURL.path) {
+                try FileManager.default.removeItem(at: mdFileURL)
+            }
+            
             sessions.removeAll { $0.id == session.id }
             
             if currentSession?.id == session.id {
@@ -215,7 +289,21 @@ class SessionManager {
         }
     }
     
-    // MARK: - Markdown Conversion
+    // MARK: - JSON Loading
+    
+    private func loadSessionFromJSON(url: URL) -> ChatSession? {
+        do {
+            let data = try Data(contentsOf: url)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            return try decoder.decode(ChatSession.self, from: data)
+        } catch {
+            print("JSON読み込みエラー (\(url.lastPathComponent)): \(error)")
+            return nil
+        }
+    }
+
+    // MARK: - Markdown Conversion (Legacy Support)
     
     private func generateMarkdown(from session: ChatSession) -> String {
         var markdown = """
