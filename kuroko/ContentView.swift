@@ -37,6 +37,7 @@ class KurokoViewModel {
     private var selectedModel: String = "gemini-2.5-flash"
     private var selectedProvider: String = "gemini"
     private var model: GenerativeModel?
+    private var systemPrompt: String = ""
     
     init(sessionManager: SessionManager = SessionManager()) {
         self.sessionManager = sessionManager
@@ -44,6 +45,7 @@ class KurokoViewModel {
         self.openRouterApiKey = UserDefaults.standard.string(forKey: "openRouterApiKey") ?? ""
         self.selectedModel = UserDefaults.standard.string(forKey: "selectedModel") ?? "gemini-2.5-flash"
         self.selectedProvider = UserDefaults.standard.string(forKey: "selectedProvider") ?? "gemini"
+        self.systemPrompt = UserDefaults.standard.string(forKey: "systemPrompt") ?? ""
         updateModelConfiguration()
         loadCurrentSession()
     }
@@ -53,6 +55,7 @@ class KurokoViewModel {
         self.openRouterApiKey = UserDefaults.standard.string(forKey: "openRouterApiKey") ?? ""
         self.selectedModel = UserDefaults.standard.string(forKey: "selectedModel") ?? "gemini-2.5-flash"
         self.selectedProvider = UserDefaults.standard.string(forKey: "selectedProvider") ?? "gemini"
+        self.systemPrompt = UserDefaults.standard.string(forKey: "systemPrompt") ?? ""
         
         if selectedProvider == "gemini" {
             guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -63,7 +66,11 @@ class KurokoViewModel {
                 return
             }
             self.errorMessage = nil
-            self.model = GenerativeModel(name: selectedModel, apiKey: apiKey)
+            if !systemPrompt.isEmpty {
+                 self.model = GenerativeModel(name: selectedModel, apiKey: apiKey, systemInstruction: ModelContent(parts: [.text(systemPrompt)]))
+            } else {
+                 self.model = GenerativeModel(name: selectedModel, apiKey: apiKey)
+            }
         } else {
             guard !openRouterApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 self.model = nil
@@ -163,12 +170,35 @@ class KurokoViewModel {
             ]
         }
         
+        // システムプロンプトを追加
+        var allMessages: [[String: Any]] = []
+        if !systemPrompt.isEmpty {
+            allMessages.append([
+                "role": "main", // OpenRouter/Anthropic style often uses 'system', but some models prefer 'system'. Standard is 'system' or 'developer'. using 'system' for broad compatibility.
+                "content": systemPrompt
+            ])
+            // Note: Some OpenRouter models map 'system' role correctly.
+            // Let's use 'system' as the role.
+            allMessages[0]["role"] = "system"
+        }
+        
+        allMessages.append(contentsOf: chatMessages)
+        
         // ユーザーメッセージを追加
         let userMessageDict = [
             "role": "user",
             "content": userMessage
         ]
-        let allMessages = chatMessages + [userMessageDict]
+        
+        // 既存のallMessagesロジックを修正
+        if !systemPrompt.isEmpty {
+            // 上で追加済み
+        } else {
+            // chatMessagesをベースにする
+            allMessages = chatMessages
+        }
+        
+        allMessages.append(userMessageDict)
         
         let body: [String: Any] = [
             "model": selectedModel,
@@ -325,6 +355,7 @@ struct ContentView: View {
                             .padding(.horizontal, 16) // 画面端からの余白
                             .padding(.top, 16)
                         }
+                        .scrollDismissesKeyboard(.interactively) // スクロールでキーボードを閉じる
                         .onChange(of: viewModel.messages.last?.text) { _ in
                             DispatchQueue.main.async {
                                 if let lastId = viewModel.messages.last?.id {
@@ -343,6 +374,9 @@ struct ContentView: View {
                     .padding(.bottom, 8)
                     .background(Color(red: 0.05, green: 0.05, blue: 0.05)) // 背景と同じ色で溶け込ませる
                 }
+            }
+            .onTapGesture {
+                isInputFocused = false // 背景タップでキーボードを閉じる
             }
             .navigationTitle("kuroko")
             .navigationBarTitleDisplayMode(.inline)

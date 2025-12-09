@@ -58,6 +58,12 @@ struct SettingsView: View {
                     }
                 }
                 
+                Section(header: Text("Custom Instructions")) {
+                   NavigationLink(destination: SystemPromptSettingsView()) {
+                       Text("System Prompt")
+                   }
+                }
+                
                 Section(header: Text("General")) {
                     NavigationLink(destination: ConversationHistorySettingsView(sessionManager: sessionManager)) {
                         Text("Conversation Save Location")
@@ -276,6 +282,22 @@ struct ConversationHistorySettingsView: View {
         case .failure(let error):
             print("Folder selection error: \(error)")
         }
+    }
+}
+
+// MARK: - System Prompt Settings
+struct SystemPromptSettingsView: View {
+    @AppStorage("systemPrompt") private var systemPrompt: String = ""
+    
+    var body: some View {
+        Form {
+            Section(header: Text("System Prompt"), footer: Text("These instructions will be sent to the model at the beginning of every conversation.")) {
+                TextEditor(text: $systemPrompt)
+                    .frame(minHeight: 200)
+            }
+        }
+        .navigationTitle("Custom Instructions")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
