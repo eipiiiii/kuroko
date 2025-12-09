@@ -491,11 +491,10 @@ struct InputArea: View {
                 Image(systemName: "plus")
                     .font(.system(size: 20))
                     .foregroundStyle(.gray)
-                    .frame(width: 32, height: 32)
-                    .background(Color(white: 0.2))
+                    .frame(width: 44, height: 44)
+                    .background(Color(red: 0.15, green: 0.15, blue: 0.15))
                     .clipShape(Circle())
             }
-            .padding(.bottom, 8)
             
             // 入力フィールド（カプセル型）
             ZStack(alignment: .bottomTrailing) {
