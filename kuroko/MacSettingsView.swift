@@ -22,9 +22,15 @@ struct MacSettingsView: View {
                     Label("Models", systemImage: "cpu")
                 }
             
+
             MacSystemPromptSettingsView()
                 .tabItem {
                     Label("Instructions", systemImage: "text.quote")
+                }
+            
+            MacSearchSettingsView()
+                .tabItem {
+                    Label("Search", systemImage: "magnifyingglass")
                 }
         }
         .padding()
@@ -166,7 +172,7 @@ struct MacOpenRouterSettingsView: View {
                 
                 if isLoadingModels {
                     ProgressView()
-                        .controlSize(.small)
+                    .controlSize(.small)
                 } else {
                     Button(action: {
                         Task { await fetchOpenRouterModels() }
@@ -220,26 +226,79 @@ struct MacOpenRouterSettingsView: View {
 }
 
 struct MacSystemPromptSettingsView: View {
-    @AppStorage("systemPrompt") private var systemPrompt: String = ""
+    @AppStorage("customPrompt") private var customPrompt: String = ""
+    @State private var showSystemInstructions = false
     
     var body: some View {
-        VStack(alignment: .leading) {
-            Text("System Prompt")
-                .font(.headline)
-            Text("These instructions will be sent to the model at the beginning of every conversation.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 16) {
+            // Fixed System Instructions (Read-only)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("System Instructions")
+                    .font(.headline)
+                Text("These are fixed instructions that ensure proper tool usage and response quality. They cannot be edited.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                
+                DisclosureGroup("View System Instructions", isExpanded: $showSystemInstructions) {
+                    ScrollView {
+                        Text(KurokoViewModel.FIXED_SYSTEM_PROMPT)
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .padding(8)
+                    }
+                    .frame(maxHeight: 150)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .cornerRadius(6)
+                }
+            }
             
-            TextEditor(text: $systemPrompt)
-                .font(.body)
-                .padding(4)
-                .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(6)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
-                )
+            Divider()
+            
+            // User Custom Instructions (Editable)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Custom Instructions")
+                    .font(.headline)
+                Text("Add your own instructions to customize the AI's behavior. These will be combined with the system instructions above.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                
+                TextEditor(text: $customPrompt)
+                    .font(.body)
+                    .padding(4)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .cornerRadius(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                    )
+            }
         }
+        .padding()
+    }
+}
+
+struct MacSearchSettingsView: View {
+    @AppStorage("googleSearchApiKey") private var googleSearchApiKey: String = ""
+    @AppStorage("googleSearchEngineId") private var googleSearchEngineId: String = ""
+    
+    var body: some View {
+        Form {
+            Section {
+                SecureField("API Key", text: $googleSearchApiKey)
+                    .textFieldStyle(.roundedBorder)
+                
+                TextField("Search Engine ID (CX)", text: $googleSearchEngineId)
+                    .textFieldStyle(.roundedBorder)
+            } header: {
+                Text("Google Custom Search")
+            } footer: {
+                Text("These keys are required to enable web search capabilities for the model. API Key from Google Cloud Console, Search Engine ID from Programmable Search Engine.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
         .padding()
     }
 }

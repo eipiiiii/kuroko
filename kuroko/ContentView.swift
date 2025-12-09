@@ -11,9 +11,10 @@ import GoogleGenerativeAI
 import Foundation
 
 // MARK: - Models
-enum MessageRole {
+enum MessageRole: String, Codable {
     case user
     case model
+    case tool // New role for tool outputs
 }
 
 struct ChatMessage: Identifiable, Equatable {
@@ -21,6 +22,8 @@ struct ChatMessage: Identifiable, Equatable {
     let role: MessageRole
     var text: String
     var isStreaming: Bool = false
+    var toolCallId: String? = nil // For identifying tool responses
+    var toolCalls: [ToolCall]? = nil // For storing tool calls made by the model
 }
 
 // MARK: - ViewModel
@@ -37,7 +40,38 @@ class KurokoViewModel {
     private var selectedModel: String = "gemini-2.5-flash"
     private var selectedProvider: String = "gemini"
     private var model: GenerativeModel?
-    private var systemPrompt: String = ""
+    private var customPrompt: String = "" // User-editable custom instructions
+    
+    // Search Config
+    private var googleSearchApiKey: String = ""
+    private var googleSearchEngineId: String = ""
+    
+    // MARK: - Fixed System Instructions (Read-only)
+    static let FIXED_SYSTEM_PROMPT = """
+You are a helpful AI assistant with access to web search capabilities.
+
+## Your Knowledge Limitations:
+- Your training data has a knowledge cutoff date (typically 2023-2024, varies by model).
+- You DO NOT have access to real-time information without using tools.
+- For any information after your cutoff or about current events, you MUST use the google_search tool.
+- Never guess or hallucinate current information - always search when uncertain.
+
+## Current Context:
+Current date and time: [DYNAMIC_TIMESTAMP]
+
+## Tool Usage Guidelines:
+- When you need up-to-date information (e.g., current prices, latest news, recent events), use the `google_search` tool.
+- When the user asks about information that may have changed since your knowledge cutoff, use the search tool.
+- Always cite sources when using search results.
+- If search results are insufficient, acknowledge the limitation.
+
+## Response Style:
+- Be concise and clear.
+- Use markdown formatting for better readability.
+- Provide accurate information based on your knowledge or search results.
+"""
+
+
     
     init(sessionManager: SessionManager = SessionManager.shared) {
         self.sessionManager = sessionManager
@@ -45,7 +79,9 @@ class KurokoViewModel {
         self.openRouterApiKey = UserDefaults.standard.string(forKey: "openRouterApiKey") ?? ""
         self.selectedModel = UserDefaults.standard.string(forKey: "selectedModel") ?? "gemini-2.5-flash"
         self.selectedProvider = UserDefaults.standard.string(forKey: "selectedProvider") ?? "gemini"
-        self.systemPrompt = UserDefaults.standard.string(forKey: "systemPrompt") ?? ""
+        self.customPrompt = UserDefaults.standard.string(forKey: "customPrompt") ?? ""
+        self.googleSearchApiKey = UserDefaults.standard.string(forKey: "googleSearchApiKey") ?? ""
+        self.googleSearchEngineId = UserDefaults.standard.string(forKey: "googleSearchEngineId") ?? ""
         updateModelConfiguration()
         loadCurrentSession()
     }
@@ -55,7 +91,9 @@ class KurokoViewModel {
         self.openRouterApiKey = UserDefaults.standard.string(forKey: "openRouterApiKey") ?? ""
         self.selectedModel = UserDefaults.standard.string(forKey: "selectedModel") ?? "gemini-2.5-flash"
         self.selectedProvider = UserDefaults.standard.string(forKey: "selectedProvider") ?? "gemini"
-        self.systemPrompt = UserDefaults.standard.string(forKey: "systemPrompt") ?? ""
+        self.customPrompt = UserDefaults.standard.string(forKey: "customPrompt") ?? ""
+        self.googleSearchApiKey = UserDefaults.standard.string(forKey: "googleSearchApiKey") ?? ""
+        self.googleSearchEngineId = UserDefaults.standard.string(forKey: "googleSearchEngineId") ?? ""
         
         if selectedProvider == "gemini" {
             guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -66,8 +104,12 @@ class KurokoViewModel {
                 return
             }
             self.errorMessage = nil
-            if !systemPrompt.isEmpty {
-                 self.model = GenerativeModel(name: selectedModel, apiKey: apiKey, systemInstruction: ModelContent(parts: [.text(systemPrompt)]))
+            // Combine fixed system prompt with custom prompt and inject current timestamp
+            let timestamp = ISO8601DateFormatter().string(from: Date())
+            let promptWithTimestamp = KurokoViewModel.FIXED_SYSTEM_PROMPT.replacingOccurrences(of: "[DYNAMIC_TIMESTAMP]", with: timestamp)
+            let combinedPrompt = promptWithTimestamp + (customPrompt.isEmpty ? "" : "\n\n## Custom Instructions:\n" + customPrompt)
+            if !combinedPrompt.isEmpty {
+                 self.model = GenerativeModel(name: selectedModel, apiKey: apiKey, systemInstruction: ModelContent(parts: [.text(combinedPrompt)]))
             } else {
                  self.model = GenerativeModel(name: selectedModel, apiKey: apiKey)
             }
@@ -164,81 +206,222 @@ class KurokoViewModel {
         request.addValue("kuroko-swift", forHTTPHeaderField: "X-Title")
         
         // メッセージ履歴を作成
-        let chatMessages = self.messages.dropLast().map { message in
-            [
-                "role": message.role == .user ? "user" : "assistant",
-                "content": message.text
-            ]
+        var allMessages: [[String: Any]] = []
+        
+        // System Prompt
+        // Combine fixed system prompt with custom prompt and inject current timestamp
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let promptWithTimestamp = KurokoViewModel.FIXED_SYSTEM_PROMPT.replacingOccurrences(of: "[DYNAMIC_TIMESTAMP]", with: timestamp)
+        let combinedPrompt = promptWithTimestamp + (customPrompt.isEmpty ? "" : "\n\n## Custom Instructions:\n" + customPrompt)
+        if !combinedPrompt.isEmpty {
+            allMessages.append([
+                "role": "system",
+                "content": combinedPrompt
+            ])
         }
         
-        // システムプロンプトを追加
-        var allMessages: [[String: Any]] = []
-        if !systemPrompt.isEmpty {
-            allMessages.append([
-                "role": "main", // OpenRouter/Anthropic style often uses 'system', but some models prefer 'system'. Standard is 'system' or 'developer'. using 'system' for broad compatibility.
-                "content": systemPrompt
-            ])
-            // Note: Some OpenRouter models map 'system' role correctly.
-            // Let's use 'system' as the role.
-            allMessages[0]["role"] = "system"
+        // History
+        let chatMessages = self.messages.dropLast().map { message -> [String: Any] in
+            var msg: [String: Any] = [
+                "role": message.role.rawValue, // user, model -> assistant, tool
+                "content": message.text
+            ]
+            
+            // Map 'model' role to 'assistant' for API
+            if message.role == .model {
+                msg["role"] = "assistant"
+                if let toolCalls = message.toolCalls {
+                    // Reconstruct tool_calls JSON
+                    let toolCallsJSON = toolCalls.map { tc in
+                        [
+                            "id": tc.id,
+                            "type": tc.type,
+                            "function": [
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments
+                            ]
+                        ]
+                    }
+                    msg["tool_calls"] = toolCallsJSON
+                }
+            } else if message.role == .tool {
+                msg["tool_call_id"] = message.toolCallId
+            }
+            
+            return msg
         }
         
         allMessages.append(contentsOf: chatMessages)
         
-        // ユーザーメッセージを追加
-        let userMessageDict = [
-            "role": "user",
-            "content": userMessage
-        ]
+        // Current User Message (If it's the start of interaction)
+        // Note: The caller appends user message to `messages` BEFORE calling this.
+        // So `dropLast()` removes the EMPTY AI message, but keeps the user message?
+        // Wait, sendMessage() does:
+        // messages.append(UserMessage)
+        // messages.append(AIMessage) -> index
+        // So dropLast() removes AIMessage. The UserMessage IS in chatMessages.
+        // The original code was:
+        // let chatMessages = self.messages.dropLast().map ...
+        // allMessages.append(contentsOf: chatMessages)
+        // let userMessageDict = ["role": "user", "content": userMessage]
+        // allMessages.append(userMessageDict)
+        // This DUPLICATED the user message if it was already in `chatMessages`.
+        // Let's fix this logic.
+        // Correct logic: `messages` contains [Historic..., UserNew, AIPlaceholder].
+        // dropLast() -> [Historic..., UserNew].
+        // So we DON'T need to append userMessage separately if we use `chatMessages`.
+        // However, the original code did:
+        // let chatMessages = self.messages.dropLast().map...
+        // ...
+        // allMessages.append(contentsOf: chatMessages)
+        // allMessages.append(userMessageDict)
+        // Check `sendMessage`:
+        // messages.append(user)
+        // messages.append(ai)
+        // So `dropLast` includes `user`.
+        // So the original code was sending the user message TWICE?
+        // Ah, `sendMessage` func appends user message to `messages`.
+        // `dropLast` includes it.
+        // Then `allMessages.append(userMessageDict)` adds it AGAIN?
+        // Let's assume I should trust the loop to build the full history properly.
         
-        // 既存のallMessagesロジックを修正
-        if !systemPrompt.isEmpty {
-            // 上で追加済み
-        } else {
-            // chatMessagesをベースにする
-            allMessages = chatMessages
-        }
-        
-        allMessages.append(userMessageDict)
-        
-        let body: [String: Any] = [
+        // Tools Definition
+        var requestBody: [String: Any] = [
             "model": selectedModel,
             "messages": allMessages,
             "stream": true
         ]
         
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let toolsEnabled = !googleSearchApiKey.isEmpty && !googleSearchEngineId.isEmpty
+        if toolsEnabled {
+            let googleSearchTool: [String: Any] = [
+                "type": "function",
+                "function": [
+                    "name": "google_search",
+                    "description": "Search Google for information when you cannot answer from your knowledge base or need up-to-date information.",
+                    "parameters": [
+                        "type": "object",
+                        "properties": [
+                            "query": [
+                                "type": "string",
+                                "description": "The search query to send to Google."
+                            ]
+                        ],
+                        "required": ["query"]
+                    ]
+                ]
+            ]
+            requestBody["tools"] = [googleSearchTool]
+        }
+        
+        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
         
         let (data, _) = try await URLSession.shared.data(for: request)
         
-        // ストリーミング応答を処理
+        // Handle Streaming Response
         let responseString = String(data: data, encoding: .utf8) ?? ""
         let lines = responseString.components(separatedBy: "\n")
+        
+        var currentToolCall: ToolCall? = nil
+        var currentToolId: String = ""
+        var currentFunctionName: String = ""
+        var currentFunctionArgs: String = ""
+        var isToolCall = false
         
         for line in lines {
             let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmedLine.hasPrefix("data: ") {
                 let jsonDataString = String(trimmedLine.dropFirst(6))
-                if jsonDataString == "[DONE]" {
-                    break
+                if jsonDataString == "[DONE]" { break }
+                
+                guard let jsonData = jsonDataString.data(using: .utf8),
+                      let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+                      let choices = json["choices"] as? [[String: Any]],
+                      let delta = choices.first?["delta"] as? [String: Any] else { continue }
+                
+                // Handle Content
+                if let content = delta["content"] as? String {
+                    if !content.isEmpty {
+                        await MainActor.run {
+                            self.messages[aiMessageIndex].text += content
+                        }
+                    }
                 }
                 
-                if let jsonData = jsonDataString.data(using: .utf8) {
-                    if let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-                       let choices = json["choices"] as? [[String: Any]],
-                       let delta = choices.first?["delta"] as? [String: Any],
-                       let content = delta["content"] as? String {
-                        if !content.isEmpty {
-                            self.messages[aiMessageIndex].text += content
+                // Handle Tool Calls (Streaming)
+                 if let toolCalls = delta["tool_calls"] as? [[String: Any]], let firstMethod = toolCalls.first {
+                    isToolCall = true
+                    if let id = firstMethod["id"] as? String {
+                        currentToolId = id
+                    }
+                    if let function = firstMethod["function"] as? [String: Any] {
+                        if let name = function["name"] as? String {
+                            currentFunctionName = name
+                        }
+                        if let args = function["arguments"] as? String {
+                            currentFunctionArgs += args
                         }
                     }
                 }
             }
         }
         
-        self.messages[aiMessageIndex].isStreaming = false
-        isLoading = false
-        saveCurrentSession()
+        if isToolCall && !currentFunctionName.isEmpty {
+            // Tool call completed
+            let toolCall = ToolCall(id: currentToolId, type: "function", function: FunctionCall(name: currentFunctionName, arguments: currentFunctionArgs))
+            
+            await MainActor.run {
+                // Update the current AI message to reflect it made a tool call (optional, depends on UI)
+                self.messages[aiMessageIndex].toolCalls = [toolCall]
+                self.messages[aiMessageIndex].isStreaming = false
+                
+                // Add visible text for the tool call so it is saved in history and visible to user
+                if currentFunctionName == "google_search" {
+                    // Parse the query for display
+                    if let argsData = currentFunctionArgs.data(using: .utf8),
+                       let argsDict = try? JSONSerialization.jsonObject(with: argsData) as? [String: Any],
+                       let query = argsDict["query"] as? String {
+                        self.messages[aiMessageIndex].text += "\n\n🔍 **Searching:** \(query)"
+                    }
+                }
+            }
+            
+            // Execute Tool
+            if currentFunctionName == "google_search" {
+                // Parse args
+                if let argsData = currentFunctionArgs.data(using: .utf8),
+                   let argsDict = try? JSONSerialization.jsonObject(with: argsData) as? [String: Any],
+                   let query = argsDict["query"] as? String {
+                    
+                    await MainActor.run {
+                        // Append tool call to history (handled by updating the message above)
+                        // Add Tool Result Message
+                        // But first, we need to add a NEW placeholder for the NEXT AI response?
+                        // Or do we continue stream? OpenRouter stream usually ends after tool_calls.
+                        // We need to make a NEW request with tool outputs.
+                    }
+                    
+                    let searchResult = try await SearchService.shared.performSearch(query: query, apiKey: googleSearchApiKey, engineId: googleSearchEngineId)
+                    
+                    await MainActor.run {
+                         self.messages.append(ChatMessage(role: .tool, text: searchResult, toolCallId: currentToolId)) // Tool Result
+                         // Add new AI placeholder
+                         self.messages.append(ChatMessage(role: .model, text: "", isStreaming: true))
+                    }
+                     
+                    // Recursive call for final answer
+                    let newAiIndex = await MainActor.run { self.messages.count - 1 }
+                    try await sendOpenRouterMessage(userMessage: "", aiMessageIndex: newAiIndex) // recursive call ignores userMessage if history is built correctly
+                    return
+                }
+            }
+        }
+        
+        await MainActor.run {
+            self.messages[aiMessageIndex].isStreaming = false
+            isLoading = false
+            saveCurrentSession()
+        }
     }
     
     // MARK: - Session Management
@@ -247,7 +430,7 @@ class KurokoViewModel {
         if let session = sessionManager.currentSession {
             messages = session.messages.map { sessionMessage in
                 ChatMessage(
-                    role: sessionMessage.role == "user" ? .user : .model,
+                    role: sessionMessage.role == "user" ? .user : (sessionMessage.role == "tool" ? .tool : .model),
                     text: sessionMessage.text,
                     isStreaming: false
                 )
@@ -259,7 +442,7 @@ class KurokoViewModel {
         // 現在のメッセージをSessionMessageに変換
         let sessionMessages = messages.map { message in
             SessionMessage(
-                role: message.role == .user ? "user" : "model",
+                role: message.role.rawValue,
                 text: message.text
             )
         }
@@ -466,6 +649,11 @@ struct MessageBubble: View {
                             ForegroundColor(themeManager.textColor)
                             FontWeight(.regular)
                         }
+                        .markdownTheme(.gitHub.text {
+                            ForegroundColor(themeManager.textColor)
+                        }.link {
+                            ForegroundColor(themeManager.accentColor)
+                        })
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
                 }
@@ -508,6 +696,11 @@ struct MessageBubble: View {
                                 FontSize(16)
                                 ForegroundColor(themeManager.textColor)
                             }
+                            .markdownTheme(.gitHub.text {
+                                ForegroundColor(themeManager.textColor)
+                            }.link {
+                                ForegroundColor(themeManager.accentColor)
+                            })
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .textSelection(.enabled)
                             .padding(.horizontal, 16)

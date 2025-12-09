@@ -77,6 +77,16 @@ struct IOSSettingsView: View {
                             }
                         }
                     }
+
+                    
+                    NavigationLink(destination: SearchSettingsView()) {
+                         HStack {
+                             Text("Search Config")
+                             Spacer()
+                             Image(systemName: "magnifyingglass")
+                                 .foregroundStyle(.secondary)
+                         }
+                    }
                 }
                 
                 Section(header: Text("Custom Instructions")) {
@@ -312,18 +322,68 @@ struct ConversationHistorySettingsView: View {
     }
 }
 
-// MARK: - System Prompt Settings
+// MARK: - Custom Instructions Settings
 struct SystemPromptSettingsView: View {
-    @AppStorage("systemPrompt") private var systemPrompt: String = ""
+    @AppStorage("customPrompt") private var customPrompt: String = ""
+    @State private var showSystemInstructions = false
     
     var body: some View {
         Form {
-            Section(header: Text("System Prompt"), footer: Text("These instructions will be sent to the model at the beginning of every conversation.")) {
-                TextEditor(text: $systemPrompt)
+            // Fixed System Instructions (Read-only)
+            Section {
+                DisclosureGroup("View System Instructions", isExpanded: $showSystemInstructions) {
+                    ScrollView {
+                        Text(KurokoViewModel.FIXED_SYSTEM_PROMPT)
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .padding(.vertical, 8)
+                    }
+                    .frame(maxHeight: 200)
+                }
+            } header: {
+                Text("System Instructions")
+            } footer: {
+                Text("These are fixed instructions that ensure proper tool usage and response quality. They cannot be edited.")
+                    .font(.caption)
+            }
+            
+            // User Custom Instructions (Editable)
+            Section {
+                TextEditor(text: $customPrompt)
                     .frame(minHeight: 200)
+            } header: {
+                Text("Custom Instructions")
+            } footer: {
+                Text("Add your own instructions to customize the AI's behavior. These will be combined with the system instructions above.")
+                    .font(.caption)
             }
         }
-        .navigationTitle("Custom Instructions")
+        .navigationTitle("Instructions")
+
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
+    }
+}
+
+// MARK: - Search Settings
+struct SearchSettingsView: View {
+    @AppStorage("googleSearchApiKey") private var googleSearchApiKey: String = ""
+    @AppStorage("googleSearchEngineId") private var googleSearchEngineId: String = ""
+    
+    var body: some View {
+        Form {
+            Section {
+                SecureField("API Key", text: $googleSearchApiKey)
+                TextField("Search Engine ID (CX)", text: $googleSearchEngineId)
+            } header: {
+                Text("Google Custom Search")
+            } footer: {
+                Text("Required for web search capabilities. Get keys from Google Cloud Console and Programmable Search Engine.")
+            }
+        }
+        .navigationTitle("Search")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
