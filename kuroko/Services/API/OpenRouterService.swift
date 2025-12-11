@@ -9,21 +9,24 @@ protocol OpenRouterServiceProtocol {
         onChunk: @escaping (String) -> Void,
         onToolCall: @escaping (ToolCall) -> Void
     ) async throws
+    
+    func updateModelConfiguration()
 }
 
 // MARK: - OpenRouter Service
 
-/// Handles all OpenRouter API interactions including tool calling
+/// Handles all AI provider interactions including tool calling
 class OpenRouterService: OpenRouterServiceProtocol {
     private let configService: APIConfigurationService
-    private let searchService: SearchService
     
     init(
-        configService: APIConfigurationService = .shared,
-        searchService: SearchService = .shared
+        configService: APIConfigurationService = .shared
     ) {
         self.configService = configService
-        self.searchService = searchService
+    }
+    
+    func updateModelConfiguration() {
+        // No-op for OpenRouter
     }
     
     /// Send a message to OpenRouter API with streaming support
@@ -85,6 +88,13 @@ class OpenRouterService: OpenRouterServiceProtocol {
         
         allMessages.append(contentsOf: chatMessages)
         
+        // Add new user message
+        if !message.isEmpty {
+            allMessages.append([
+                "role": "user",
+                "content": message
+            ])
+        }        
         // Build request body
         var requestBody: [String: Any] = [
             "model": configService.selectedModel,
@@ -261,83 +271,6 @@ class OpenRouterService: OpenRouterServiceProtocol {
                 function: FunctionCall(name: currentFunctionName, arguments: currentFunctionArgs)
             )
             onToolCall(toolCall)
-        }
-    }
-    
-    /// Execute a tool call and return the result
-    func executeToolCall(_ toolCall: ToolCall) async throws -> String {
-        let functionName = toolCall.function.name
-        
-        // Parse arguments
-        guard let argsData = toolCall.function.arguments.data(using: .utf8),
-              let argsDict = try? JSONSerialization.jsonObject(with: argsData) as? [String: Any] else {
-            throw OpenRouterServiceError.invalidToolArguments
-        }
-        
-        switch functionName {
-        case "google_search":
-            guard let query = argsDict["query"] as? String else {
-                throw OpenRouterServiceError.invalidToolArguments
-            }
-            return try await searchService.performSearch(
-                query: query,
-                apiKey: configService.googleSearchApiKey,
-                engineId: configService.googleSearchEngineId
-            )
-            
-        case "list_directory":
-            guard let path = argsDict["path"] as? String else {
-                throw OpenRouterServiceError.invalidToolArguments
-            }
-            let fileSystemService = FileSystemService.shared
-            let listing = try await fileSystemService.listDirectory(path: path)
-            
-            // Format the result as a readable string
-            var result = "📂 Directory: \(listing.path)\n"
-            result += "Total items: \(listing.totalCount)\n\n"
-            
-            for file in listing.files {
-                let icon = file.isDirectory ? "📁" : "📄"
-                let size = file.size.map { "\($0) bytes" } ?? ""
-                result += "\(icon) \(file.name) \(size)\n"
-            }
-            
-            return result
-            
-        case "read_file":
-            guard let path = argsDict["path"] as? String else {
-                throw OpenRouterServiceError.invalidToolArguments
-            }
-            let fileSystemService = FileSystemService.shared
-            let content = try await fileSystemService.readFile(path: path)
-            return "📄 File: \(path)\n\n\(content)"
-            
-        case "write_file":
-            guard let path = argsDict["path"] as? String,
-                  let content = argsDict["content"] as? String else {
-                throw OpenRouterServiceError.invalidToolArguments
-            }
-            let fileSystemService = FileSystemService.shared
-            
-            // Check if file exists to determine create vs write
-            if fileSystemService.fileExists(path: path) {
-                try await fileSystemService.writeFile(path: path, content: content)
-                return "✅ File updated successfully: \(path)"
-            } else {
-                try await fileSystemService.createFile(path: path, content: content)
-                return "✅ File created successfully: \(path)"
-            }
-            
-        case "delete_file":
-            guard let path = argsDict["path"] as? String else {
-                throw OpenRouterServiceError.invalidToolArguments
-            }
-            let fileSystemService = FileSystemService.shared
-            try await fileSystemService.deleteFile(path: path)
-            return "✅ File deleted successfully: \(path)"
-            
-        default:
-            throw OpenRouterServiceError.unsupportedTool(functionName)
         }
     }
 }

@@ -7,8 +7,11 @@ protocol GeminiServiceProtocol {
     func sendMessage(
         _ message: String,
         history: [ChatMessage],
-        onChunk: @escaping (String) -> Void
+        onChunk: @escaping (String) -> Void,
+        onToolCall: @escaping (ToolCall) -> Void
     ) async throws
+    
+    func updateModelConfiguration()
 }
 
 // MARK: - Gemini Service
@@ -32,16 +35,20 @@ class GeminiService: GeminiServiceProtocol {
         
         let combinedPrompt = configService.getCombinedPrompt()
         
+        let generationConfig = GenerationConfig(temperature: 0.8)
+        
         if !combinedPrompt.isEmpty {
             model = GenerativeModel(
                 name: configService.selectedModel,
                 apiKey: configService.geminiApiKey,
+                generationConfig: generationConfig,
                 systemInstruction: ModelContent(parts: [.text(combinedPrompt)])
             )
         } else {
             model = GenerativeModel(
                 name: configService.selectedModel,
-                apiKey: configService.geminiApiKey
+                apiKey: configService.geminiApiKey,
+                generationConfig: generationConfig
             )
         }
     }
@@ -50,17 +57,27 @@ class GeminiService: GeminiServiceProtocol {
     func sendMessage(
         _ message: String,
         history: [ChatMessage],
-        onChunk: @escaping (String) -> Void
+        onChunk: @escaping (String) -> Void,
+        onToolCall: @escaping (ToolCall) -> Void
     ) async throws {
         guard let model = model else {
             throw GeminiServiceError.modelNotConfigured
         }
         
         // Convert history to Gemini format
-        let geminiHistory = history.map { chatMessage in
-            ModelContent(
-                role: chatMessage.role == .user ? "user" : "model",
-                parts: [.text(chatMessage.text)]
+        let geminiHistory = history.compactMap { chatMessage -> ModelContent? in
+            // Messages with empty text are not allowed
+            if chatMessage.text.isEmpty, chatMessage.toolCalls == nil {
+                return nil
+            }
+            
+            var parts: [ModelContent.Part] = []
+            
+            parts.append(.text(chatMessage.text))
+            
+            return ModelContent(
+                role: chatMessage.role.rawValue,
+                parts: parts
             )
         }
         

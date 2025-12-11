@@ -19,21 +19,18 @@ class KurokoViewModel {
     
     // MARK: - Services (Dependency Injection)
     private let configService: APIConfigurationService
-    private let geminiService: GeminiServiceProtocol
-    private let openRouterService: OpenRouterServiceProtocol
+    private let aiService: AIServiceProtocol
     let sessionManager: SessionManager
     
     // MARK: - Initialization
     
     init(
         configService: APIConfigurationService = .shared,
-        geminiService: GeminiServiceProtocol = GeminiService(),
-        openRouterService: OpenRouterServiceProtocol = OpenRouterService(),
+        aiService: AIServiceProtocol = AIService(),
         sessionManager: SessionManager = .shared
     ) {
         self.configService = configService
-        self.geminiService = geminiService
-        self.openRouterService = openRouterService
+        self.aiService = aiService
         self.sessionManager = sessionManager
         
         loadCurrentSession()
@@ -43,14 +40,8 @@ class KurokoViewModel {
     
     func updateModelConfiguration() {
         configService.loadConfiguration()
-        
-        // Update Gemini service if it's the selected provider
-        if configService.selectedProvider == "gemini",
-           let gemini = geminiService as? GeminiService {
-            gemini.updateModelConfiguration()
-        }
-    }
-    
+        aiService.updateModelConfiguration()
+    }    
     func stopGeneration() {
         currentTask?.cancel()
         currentTask = nil
@@ -80,7 +71,6 @@ class KurokoViewModel {
         sendMessage()
     }
     
-    
     @MainActor
     func sendMessage() {
         updateModelConfiguration()
@@ -108,11 +98,7 @@ class KurokoViewModel {
         
         currentTask = Task {
             do {
-                if configService.selectedProvider == "gemini" {
-                    try await sendGeminiMessage(userMessage: userMessage, aiMessageIndex: aiMessageIndex)
-                } else {
-                    try await sendOpenRouterMessage(userMessage: userMessage, aiMessageIndex: aiMessageIndex)
-                }
+                try await sendAIServiceMessage(userMessage: userMessage, aiMessageIndex: aiMessageIndex)
             } catch {
                 await MainActor.run {
                     isLoading = false
@@ -160,26 +146,10 @@ class KurokoViewModel {
     
     // MARK: - Private Methods
     
-    private func sendGeminiMessage(userMessage: String, aiMessageIndex: Int) async throws {
+    private func sendAIServiceMessage(userMessage: String, aiMessageIndex: Int) async throws {
         let history = messages.dropLast()
         
-        try await geminiService.sendMessage(userMessage, history: Array(history)) { [weak self] chunk in
-            Task { @MainActor in
-                self?.messages[aiMessageIndex].text += chunk
-            }
-        }
-        
-        await MainActor.run {
-            messages[aiMessageIndex].isStreaming = false
-            isLoading = false
-            saveCurrentSession()
-        }
-    }
-    
-    private func sendOpenRouterMessage(userMessage: String, aiMessageIndex: Int) async throws {
-        let history = messages.dropLast()
-        
-        try await openRouterService.sendMessage(
+        try await aiService.sendMessage(
             userMessage,
             history: Array(history),
             onChunk: { [weak self] chunk in
@@ -205,20 +175,18 @@ class KurokoViewModel {
                     
                     // Execute tool
                     do {
-                        if let openRouter = self.openRouterService as? OpenRouterService {
-                            let result = try await openRouter.executeToolCall(toolCall)
-                            
-                            await MainActor.run {
-                                // Add tool result
-                                self.messages.append(ChatMessage(role: .tool, text: result, toolCallId: toolCall.id))
-                                // Add new AI placeholder
-                                self.messages.append(ChatMessage(role: .model, text: "", isStreaming: true))
-                            }
-                            
-                            // Recursive call for final answer
-                            let newAiIndex = await MainActor.run { self.messages.count - 1 }
-                            try await self.sendOpenRouterMessage(userMessage: "", aiMessageIndex: newAiIndex)
+                        let result = try await self.aiService.executeToolCall(toolCall)
+                        
+                        await MainActor.run {
+                            // Add tool result
+                            self.messages.append(ChatMessage(role: .tool, text: result, toolCallId: toolCall.id))
+                            // Add new AI placeholder
+                            self.messages.append(ChatMessage(role: .model, text: "", isStreaming: true))
                         }
+                        
+                        // Recursive call for final answer
+                        let newAiIndex = await MainActor.run { self.messages.count - 1 }
+                        try await self.sendAIServiceMessage(userMessage: userMessage, aiMessageIndex: newAiIndex)
                     } catch {
                         await MainActor.run {
                             self.errorMessage = "Tool execution error: \(error.localizedDescription)"
