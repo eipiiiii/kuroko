@@ -65,8 +65,10 @@ class AIService: AIServiceProtocol {
         // Log tool execution for debugging
         print("🔧 Executing tool: \(functionName) with arguments: \(argsDict)")
         
-        // Execute directly without timeout for compatibility
-        return try await executeToolSafely(functionName, arguments: argsDict)
+        // Execute with timeout protection
+        return try await withTimeout(.seconds(30)) {
+            try await executeToolSafely(functionName, arguments: argsDict)
+        }
     }
     
     /// Validate and parse tool arguments

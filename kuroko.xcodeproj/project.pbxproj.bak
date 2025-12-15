@@ -7,8 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		35189B252EE6E3DC00FBA626 /* GoogleGenerativeAI in Frameworks */ = {isa = PBXBuildFile; productRef = 35189B242EE6E3DC00FBA626 /* GoogleGenerativeAI */; };
 		35189B2B2EE70A1500FBA626 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = 35189B2A2EE70A1500FBA626 /* MarkdownUI */; };
-		35BB74652EF0167A001846D2 /* GoogleGenerativeAI in Frameworks */ = {isa = PBXBuildFile; productRef = 35189B242EE6E3DC00FBA626 /* GoogleGenerativeAI */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -57,7 +57,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				35BB74652EF0167A001846D2 /* GoogleGenerativeAI in Frameworks */,
+				35189B252EE6E3DC00FBA626 /* GoogleGenerativeAI in Frameworks */,
 				35189B2B2EE70A1500FBA626 /* MarkdownUI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

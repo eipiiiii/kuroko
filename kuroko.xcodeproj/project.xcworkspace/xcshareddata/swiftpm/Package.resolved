@@ -2,15 +2,6 @@
   "originHash" : "c798eb2cbf6a2074259e08be20fa7199a05d51e8c06ed07dfcb0eead3a07c436",
   "pins" : [
     {
-      "identity" : "generative-ai-swift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/google/generative-ai-swift",
-      "state" : {
-        "revision" : "44b8ce120425f9cf53ca756f3434ca2c2696f8bd",
-        "version" : "0.5.6"
-      }
-    },
-    {
       "identity" : "markdownui",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/gonzalezreal/MarkdownUI",
