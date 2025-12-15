@@ -17,13 +17,5 @@ struct kurokoApp: App {
                 .environment(themeManager)
                 .tint(themeManager.accentColor)
         }
-        
-        #if os(macOS)
-        Settings {
-            SettingsView(sessionManager: SessionManager.shared)
-                .environment(themeManager)
-                .tint(themeManager.accentColor)
-        }
-        #endif
     }
 }

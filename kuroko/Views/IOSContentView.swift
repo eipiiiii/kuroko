@@ -1,6 +1,5 @@
 import SwiftUI
 
-#if os(iOS)
 // MARK: - iOS Content View
 
 struct IOSContentView: View {
@@ -49,4 +48,3 @@ struct IOSContentView: View {
         }
     }
 }
-#endif

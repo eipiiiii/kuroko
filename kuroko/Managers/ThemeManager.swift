@@ -117,15 +117,9 @@ enum AppTheme: String, CaseIterable, Identifiable {
 
 extension Color {
     init(light: Color, dark: Color) {
-        #if os(iOS)
         self.init(uiColor: UIColor { traitCollection in
             traitCollection.userInterfaceStyle == .dark ? UIColor(dark) : UIColor(light)
         })
-        #else
-        self.init(nsColor: NSColor(name: nil, dynamicProvider: { appearance in
-            appearance.name == .darkAqua ? NSColor(dark) : NSColor(light)
-        }))
-        #endif
     }
 }
 

@@ -45,11 +45,7 @@ class SessionManager {
         
         // セキュリティスコープ付きブックマークを保存
         do {
-            #if os(macOS)
-            let bookmarkData = try url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
-            #else
             let bookmarkData = try url.bookmarkData(options: .minimalBookmark, includingResourceValuesForKeys: nil, relativeTo: nil)
-            #endif
             userDefaults.set(bookmarkData, forKey: saveDirectoryKey)
         } catch {
             print("ブックマーク保存エラー: \(error)")

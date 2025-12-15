@@ -18,17 +18,12 @@ struct OpenRouterResponse: Decodable {
 // MARK: - Main Settings View
 struct SettingsView: View {
     @Bindable var sessionManager: SessionManager
-    
+
     var body: some View {
-        #if os(macOS)
-        MacSettingsView(sessionManager: sessionManager)
-        #else
         IOSSettingsView(sessionManager: sessionManager)
-        #endif
     }
 }
 
-#if os(iOS)
 // MARK: - iOS Settings Implementation
 struct IOSSettingsView: View {
     @AppStorage("selectedProvider") private var selectedProvider: String = "gemini"
@@ -402,9 +397,6 @@ struct SearchSettingsView: View {
         #endif
     }
 }
-#endif
-
-
 
 struct ThemeSettingsView: View {
     @Environment(ThemeManager.self) private var themeManager
