@@ -157,14 +157,14 @@ func Hex(_ hex: String) -> Color {
 }
 
 @Observable
-class ThemeManager {
+public class ThemeManager {
     var currentTheme: AppTheme = .monochrome {
         didSet {
             UserDefaults.standard.set(currentTheme.rawValue, forKey: "selectedTheme")
         }
     }
     
-    init() {
+    public init() {
         if let savedTheme = UserDefaults.standard.string(forKey: "selectedTheme"),
            let theme = AppTheme(rawValue: savedTheme) {
             self.currentTheme = theme

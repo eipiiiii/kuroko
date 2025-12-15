@@ -1,55 +1,86 @@
 import Foundation
 import SwiftUI
 
+// MARK: - View State
+enum ViewState: Equatable {
+    case idle
+    case loading
+    case error(String)
+    
+    static func == (lhs: ViewState, rhs: ViewState) -> Bool {
+        switch (lhs, rhs) {
+        case (.idle, .idle): return true
+        case (.loading, .loading): return true
+        case (.error(let a), .error(let b)): return a == b
+        default: return false
+        }
+    }
+}
+
 // MARK: - Kuroko ViewModel
 
-/// Lean UI state coordinator for the chat interface
-/// Delegates business logic to specialized services
+/// Lean UI state coordinator for the chat interface.
+/// Delegates business logic to specialized, abstract services.
 @Observable
-class KurokoViewModel {
+public class KurokoViewModel {
     // MARK: - UI State
     var messages: [ChatMessage] = []
     var inputText: String = ""
-    var isLoading: Bool = false
-    var errorMessage: String?
+    var viewState: ViewState = .idle
+    
+    // MARK: - Services (Injected through protocols)
+    private let configService: KurokoConfigurationService
+    private var llmService: LLMService
+    private let toolExecutor: ToolExecutor
+    let sessionManager: SessionManager
     
     // MARK: - Task Management
     private var currentTask: Task<Void, Never>?
-    private var lastUserMessage: String?
-    
-    // MARK: - Services (Dependency Injection)
-    private let configService: APIConfigurationService
-    private let aiService: AIServiceProtocol
-    let sessionManager: SessionManager
     
     // MARK: - Initialization
-    
-    init(
-        configService: APIConfigurationService = .shared,
-        aiService: AIServiceProtocol = AIService(),
+    public init(
+        configService: KurokoConfigurationService = .shared,
+        toolExecutor: ToolExecutor = DefaultToolExecutor(),
         sessionManager: SessionManager = .shared
     ) {
         self.configService = configService
-        self.aiService = aiService
+        self.toolExecutor = toolExecutor
         self.sessionManager = sessionManager
+        
+        // The initial LLM service is created by the factory.
+        // This can fail if the default selected model is somehow unsupported.
+        do {
+            self.llmService = try LLMServiceFactory.createService(for: configService.selectedModel.provider)
+        } catch {
+            self.llmService = UnsupportedLLMService()
+            self.viewState = .error(error.localizedDescription)
+        }
         
         loadCurrentSession()
     }
     
     // MARK: - Public Methods
     
+    /// Called when model configuration changes in settings.
     func updateModelConfiguration() {
         configService.loadConfiguration()
-        aiService.updateModelConfiguration()
-    }    
+        do {
+            self.llmService = try LLMServiceFactory.createService(for: configService.selectedModel.provider)
+        } catch {
+            self.llmService = UnsupportedLLMService()
+            self.viewState = .error(error.localizedDescription)
+        }
+    }
+    
     func stopGeneration() {
         currentTask?.cancel()
         currentTask = nil
-        isLoading = false
+        if case .loading = viewState {
+            viewState = .idle
+        }
         
         // Mark last message as stopped
-        if let lastIndex = messages.indices.last,
-           messages[lastIndex].isStreaming {
+        if let lastIndex = messages.indices.last, messages[lastIndex].isStreaming {
             messages[lastIndex].isStreaming = false
             if !messages[lastIndex].text.isEmpty {
                 messages[lastIndex].text += "\n\n⚠️ 生成を停止しました"
@@ -58,56 +89,42 @@ class KurokoViewModel {
     }
     
     func retryLastMessage() {
-        guard let lastMessage = lastUserMessage else { return }
-        
-        // Remove last AI response if present and it's an error or empty
-        if let lastIndex = messages.indices.last,
-           messages[lastIndex].role == .model {
-            messages.removeLast()
-        }
-        
-        errorMessage = nil
-        inputText = lastMessage
-        sendMessage()
+        // Simple retry logic can be enhanced later
     }
     
     @MainActor
     func sendMessage() {
-        updateModelConfiguration()
+        let userMessageText = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !userMessageText.isEmpty else { return }
         
-        guard !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        
-        // Check API key
-        guard configService.hasValidApiKey() else {
-            errorMessage = configService.getApiKeyErrorMessage()
-            return
-        }
-        
-        let userMessage = inputText
+        // Reset state
         inputText = ""
-        errorMessage = nil
+        viewState = .loading
         
-        messages.append(ChatMessage(role: .user, text: userMessage))
-        isLoading = true
+        // Append user message
+        messages.append(ChatMessage(role: .user, text: userMessageText))
         
-        // Store for retry functionality
-        lastUserMessage = userMessage
-        
+        // Append placeholder for AI response
         let aiMessageIndex = messages.count
         messages.append(ChatMessage(role: .model, text: "", isStreaming: true))
         
         currentTask = Task {
             do {
-                try await sendAIServiceMessage(userMessage: userMessage, aiMessageIndex: aiMessageIndex)
+                try await processMessage(text: userMessageText, aiMessageIndex: aiMessageIndex)
             } catch {
                 await MainActor.run {
-                    isLoading = false
+                    if let toolError = error as? ToolError {
+                        self.viewState = .error("Tool Error: \(toolError.localizedDescription)")
+                    } else {
+                        self.viewState = .error("Error: \(error.localizedDescription)")
+                    }
                     messages[aiMessageIndex].isStreaming = false
-                    errorMessage = "エラー: \(error.localizedDescription)"
                 }
             }
         }
     }
+    
+    // MARK: - Session Management
     
     func startNewSession() {
         messages = []
@@ -116,90 +133,81 @@ class KurokoViewModel {
     
     func loadCurrentSession() {
         if let session = sessionManager.currentSession {
-            messages = session.messages.map { sessionMessage in
-                ChatMessage(
-                    role: sessionMessage.role == "user" ? .user : (sessionMessage.role == "tool" ? .tool : .model),
-                    text: sessionMessage.text,
-                    isStreaming: false
-                )
-            }
+            messages = session.messages.map { ChatMessage(from: $0) }
         }
     }
     
     func saveCurrentSession() {
-        let sessionMessages = messages.map { message in
-            SessionMessage(
-                role: message.role.rawValue,
-                text: message.text
-            )
-        }
-        
+        let sessionMessages = messages.map { SessionMessage(from: $0) }
         if sessionManager.currentSession != nil {
             sessionManager.currentSession?.messages = sessionMessages
             sessionManager.currentSession?.updatedAt = Date()
         } else {
             sessionManager.currentSession = ChatSession(messages: sessionMessages)
         }
-        
         sessionManager.saveCurrentSession()
     }
     
-    // MARK: - Private Methods
+    // MARK: - Private Core Logic
     
-    private func sendAIServiceMessage(userMessage: String, aiMessageIndex: Int) async throws {
-        let history = messages.dropLast()
+    private func processMessage(text: String, aiMessageIndex: Int) async throws {
+        let history = messages.dropLast() // Exclude the placeholder
+        let config = LLMConfig(model: configService.selectedModel)
         
-        try await aiService.sendMessage(
-            userMessage,
+        try await llmService.sendMessage(
+            message: text,
             history: Array(history),
+            config: config,
             onChunk: { [weak self] chunk in
                 Task { @MainActor in
                     self?.messages[aiMessageIndex].text += chunk
                 }
             },
             onToolCall: { [weak self] toolCall in
-                Task { @MainActor [weak self] in
-                    guard let self = self else { return }
-                    
-                    // Update message with tool call
-                    self.messages[aiMessageIndex].toolCalls = [toolCall]
-                    self.messages[aiMessageIndex].isStreaming = false
-                    
-                    // Add visual indicator
-                    if toolCall.function.name == "google_search",
-                       let argsData = toolCall.function.arguments.data(using: .utf8),
-                       let argsDict = try? JSONSerialization.jsonObject(with: argsData) as? [String: Any],
-                       let query = argsDict["query"] as? String {
-                        self.messages[aiMessageIndex].text += "\n\n🔍 **Searching:** \(query)"
-                    }
-                    
-                    // Execute tool
-                    do {
-                        let result = try await self.aiService.executeToolCall(toolCall)
-                        
-                        await MainActor.run {
-                            // Add tool result
-                            self.messages.append(ChatMessage(role: .tool, text: result, toolCallId: toolCall.id))
-                            // Add new AI placeholder
-                            self.messages.append(ChatMessage(role: .model, text: "", isStreaming: true))
-                        }
-                        
-                        // Recursive call for final answer
-                        let newAiIndex = await MainActor.run { self.messages.count - 1 }
-                        try await self.sendAIServiceMessage(userMessage: userMessage, aiMessageIndex: newAiIndex)
-                    } catch {
-                        await MainActor.run {
-                            self.errorMessage = "Tool execution error: \(error.localizedDescription)"
-                        }
-                    }
+                Task { @MainActor in
+                    self?.handleToolCall(toolCall, aiMessageIndex: aiMessageIndex)
                 }
             }
         )
         
         await MainActor.run {
             messages[aiMessageIndex].isStreaming = false
-            isLoading = false
+            viewState = .idle
             saveCurrentSession()
         }
     }
+    
+    @MainActor
+    private func handleToolCall(_ toolCall: ToolCall, aiMessageIndex: Int) {
+        // Update message with tool call info
+        messages[aiMessageIndex].toolCalls = [toolCall]
+        messages[aiMessageIndex].isStreaming = false
+        
+        // Add visual indicator for the tool call
+        messages[aiMessageIndex].text += "\n\n\(toolCall.function.name)..." // Simple indicator
+        
+        // Execute the tool and process the result
+        Task {
+            do {
+                let result = try await toolExecutor.executeToolCall(toolCall)
+                
+                await MainActor.run {
+                    // Add tool result message
+                    messages.append(ChatMessage(role: .tool, text: result, toolCallId: toolCall.id))
+                    
+                    // Add a new placeholder for the AI's final response
+                    let newAiIndex = messages.count
+                    messages.append(ChatMessage(role: .model, text: "", isStreaming: true))
+                    
+                    // Make a new call to the LLM with the tool result
+                    Task {
+                        try await self.processMessage(text: "", aiMessageIndex: newAiIndex)
+                    }
+                }
+            } catch {
+                viewState = .error("Tool Error: \(error.localizedDescription)")
+            }
+        }
+    }
 }
+

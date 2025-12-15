@@ -10,17 +10,17 @@ import SwiftUI
 
 // MARK: - Session Manager
 @Observable
-class SessionManager {
-    static let shared = SessionManager()
+public class SessionManager {
+    public static let shared = SessionManager()
     
-    var sessions: [ChatSession] = []
-    var currentSession: ChatSession?
-    var saveDirectoryURL: URL?
+    public var sessions: [ChatSession] = []
+    public var currentSession: ChatSession?
+    public var saveDirectoryURL: URL?
     
     private let userDefaults = UserDefaults.standard
     private let saveDirectoryKey = "sessionSaveDirectory"
     
-    init() {
+    public init() {
         loadSaveDirectory()
         loadSessions()
     }

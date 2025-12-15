@@ -21,19 +21,33 @@ struct ChatView: View {
                             Spacer()
                             
                             LazyVStack(spacing: 24) {
-                                // Welcome Message
-                                if viewModel.messages.isEmpty && viewModel.errorMessage == nil {
-                                    ContentUnavailableView {
-                                        Image(systemName: "magnifyingglass")
-                                            .font(.system(size: 40))
-                                            .foregroundStyle(.secondary)
-                                    } description: {
-                                        Text("知りたいことは何ですか？")
-                                            .font(.title3)
-                                            .fontWeight(.medium)
-                                            .foregroundStyle(.secondary)
+                                // Welcome Message or Error
+                                if viewModel.messages.isEmpty {
+                                    if case .error(let message) = viewModel.viewState {
+                                        ContentUnavailableView {
+                                            Image(systemName: "exclamationmark.triangle")
+                                                .font(.system(size: 40))
+                                                .foregroundStyle(.red)
+                                        } description: {
+                                            Text(message)
+                                                .font(.title3)
+                                                .fontWeight(.medium)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .padding(.top, 100)
+                                    } else {
+                                        ContentUnavailableView {
+                                            Image(systemName: "magnifyingglass")
+                                                .font(.system(size: 40))
+                                                .foregroundStyle(.secondary)
+                                        } description: {
+                                            Text("知りたいことは何ですか？")
+                                                .font(.title3)
+                                                .fontWeight(.medium)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .padding(.top, 100)
                                     }
-                                    .padding(.top, 100)
                                 }
                                 
                                 ForEach(viewModel.messages) { message in
@@ -41,8 +55,8 @@ struct ChatView: View {
                                         .id(message.id)
                                 }
                                 
-                                if let error = viewModel.errorMessage {
-                                    Text(error)
+                                if case .error(let message) = viewModel.viewState, !viewModel.messages.isEmpty {
+                                    Text(message)
                                         .font(.caption)
                                         .foregroundStyle(.red)
                                         .padding()
@@ -71,8 +85,8 @@ struct ChatView: View {
                 // Input Area
                 InputArea(
                     text: $viewModel.inputText,
-                    isLoading: viewModel.isLoading,
-                    hasError: viewModel.errorMessage != nil,
+                    isLoading: viewModel.viewState == .loading,
+                    hasError: viewModel.viewState != .idle && viewModel.viewState != .loading,
                     isFocused: $isInputFocused,
                     onSend: {
                         viewModel.sendMessage()
