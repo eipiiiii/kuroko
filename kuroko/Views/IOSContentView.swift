@@ -6,7 +6,7 @@ struct IOSContentView: View {
     @Bindable var viewModel: KurokoViewModel
     @State private var isShowingSettings = false
     @State private var isShowingHistory = false
-    
+
     var body: some View {
         NavigationStack {
             ChatView(viewModel: viewModel)
@@ -18,15 +18,15 @@ struct IOSContentView: View {
                             Image(systemName: "clock.arrow.circlepath")
                         }
                     }
-                    
+
                     ToolbarItem(placement: .topBarTrailing) {
                         HStack(spacing: 16) {
-                            Button(action: { 
+                            Button(action: {
                                 viewModel.startNewSession()
                             }) {
                                 Image(systemName: "square.and.pencil")
                             }
-                            
+
                             Button(action: { isShowingSettings = true }) {
                                 Image(systemName: "slider.horizontal.3")
                             }

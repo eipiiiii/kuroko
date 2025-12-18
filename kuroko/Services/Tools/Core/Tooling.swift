@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Tool Definition
 
 /// A protocol that defines a tool that can be executed by the AI.
-public protocol Tool {
+public protocol Tool: AnyObject {
     /// The name of the tool, matching the function name used in the LLM's tool-calling request.
     var name: String { get }
     
@@ -12,6 +12,9 @@ public protocol Tool {
     
     /// The JSON schema for the tool's parameters.
     var parameters: [String: Any] { get }
+    
+    /// Whether the tool is currently enabled and available for use.
+    var isEnabled: Bool { get set }
     
     /// Executes the tool with the given arguments.
     /// - Parameter arguments: A dictionary of arguments, parsed from the LLM's request.

@@ -6,7 +6,9 @@ enum AppTheme: String, CaseIterable, Identifiable {
     case modernAI
     case classicEditorial
     case japanTradition
-    
+    case darkModern
+    case pastel
+
     var id: String { rawValue }
     
     var displayName: String {
@@ -16,6 +18,8 @@ enum AppTheme: String, CaseIterable, Identifiable {
         case .modernAI: return "Modern AI"
         case .classicEditorial: return "Classic Editorial"
         case .japanTradition: return "Japan Tradition"
+        case .darkModern: return "Dark Modern"
+        case .pastel: return "Pastel"
         }
     }
     
@@ -34,6 +38,10 @@ enum AppTheme: String, CaseIterable, Identifiable {
             return Color(light: Hex("#FFFFFF"), dark: Hex("#1A1A1A"))
         case .japanTradition:
             return Color(light: Hex("#F6F7F8"), dark: Hex("#17184B"))
+        case .darkModern:
+            return Color(light: Hex("#0F0F0F"), dark: Hex("#000000"))
+        case .pastel:
+            return Color(light: Hex("#FEFCFF"), dark: Hex("#1A1625"))
         }
     }
     
@@ -49,6 +57,10 @@ enum AppTheme: String, CaseIterable, Identifiable {
             return Color(light: Hex("#005F73"), dark: Hex("#48CAE4"))
         case .japanTradition:
             return Color(light: Hex("#165E83"), dark: Hex("#A0D8EF"))
+        case .darkModern:
+            return Color(light: Hex("#00FF88"), dark: Hex("#00FF88"))
+        case .pastel:
+            return Color(light: Hex("#C77DFF"), dark: Hex("#E0AAFF"))
         }
     }
     
@@ -64,6 +76,10 @@ enum AppTheme: String, CaseIterable, Identifiable {
             return Color(light: Hex("#EE9B00"), dark: Hex("#FFB703"))
         case .japanTradition:
             return Color(light: Hex("#B7282E"), dark: Hex("#FF6B6B"))
+        case .darkModern:
+            return Color(light: Hex("#FF4444"), dark: Hex("#FF6B6B"))
+        case .pastel:
+            return Color(light: Hex("#FF6B9D"), dark: Hex("#FF99C8"))
         }
     }
     
@@ -79,6 +95,10 @@ enum AppTheme: String, CaseIterable, Identifiable {
             return Color(light: Hex("#111827"), dark: Hex("#F3F4F6"))
         case .japanTradition:
             return Color(light: Hex("#0D0015"), dark: Hex("#F6F7F8"))
+        case .darkModern:
+            return Color(light: Hex("#E0E0E0"), dark: Hex("#F0F0F0"))
+        case .pastel:
+            return Color(light: Hex("#2D3748"), dark: Hex("#F7FAFC"))
         }
     }
     
@@ -93,6 +113,10 @@ enum AppTheme: String, CaseIterable, Identifiable {
         case .classicEditorial:
             return .white
         case .japanTradition:
+            return .white
+        case .darkModern:
+            return .white
+        case .pastel:
             return .white
         }
     }
@@ -109,6 +133,10 @@ enum AppTheme: String, CaseIterable, Identifiable {
             return Color(light: .white, dark: .black) // Dark Main (#48CAE4) needs Black text
         case .japanTradition:
             return Color(light: .white, dark: .black) // Dark Main (#A0D8EF) needs Black text
+        case .darkModern:
+            return .white
+        case .pastel:
+            return .white
         }
     }
 }

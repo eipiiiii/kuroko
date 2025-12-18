@@ -53,6 +53,7 @@ struct ChatView: View {
                                 ForEach(viewModel.messages) { message in
                                     MessageBubble(message: message)
                                         .id(message.id)
+                                        .padding(.vertical, 4)
                                 }
                                 
                                 if case .error(let message) = viewModel.viewState, !viewModel.messages.isEmpty {

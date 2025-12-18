@@ -6,6 +6,8 @@ import MarkdownUI
 struct MessageBubble: View {
     let message: ChatMessage
     @Environment(ThemeManager.self) private var themeManager
+
+    @State private var appearAnimation = false
     
     var body: some View {
         Group {
@@ -238,6 +240,13 @@ struct MessageBubble: View {
                 }
             }
             #endif
+        }
+        .opacity(appearAnimation ? 1 : 0)
+        .offset(y: appearAnimation ? 0 : 15)
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.4).delay(0.1)) {
+                appearAnimation = true
+            }
         }
     }
 }

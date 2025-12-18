@@ -11,6 +11,9 @@ struct InputArea: View {
     var onSend: () -> Void
     var onStop: () -> Void
     var onRetry: () -> Void
+
+    @State private var isTyping = false
+    @State private var focusAnimation = false
     
     var body: some View {
         #if os(iOS)

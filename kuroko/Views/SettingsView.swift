@@ -7,6 +7,14 @@ public struct SettingsView: View {
     // The single source of truth for configuration
     @State private var configService = KurokoConfigurationService.shared
     @Environment(ThemeManager.self) private var themeManager
+    @Environment(\.dismiss) private var dismiss
+
+    private var isFileSystemEnabled: Bool {
+        let fileSystemTools = ["list_directory", "read_file", "create_file", "write_file", "search_files"]
+        return fileSystemTools.contains { toolName in
+            ToolRegistry.shared.tool(forName: toolName)?.isEnabled ?? false
+        }
+    }
 
     public var body: some View {
         NavigationStack {
@@ -21,7 +29,7 @@ public struct SettingsView: View {
                         }
                     }
                 }
-                
+
                 Section(header: Text("Model")) {
                     NavigationLink(destination: ModelSettingsView(configService: configService)) {
                         HStack {
@@ -39,6 +47,22 @@ public struct SettingsView: View {
                     NavigationLink(destination: SearchSettingsView(configService: configService)) {
                         HStack {
                             Text("Google Search")
+                            Spacer()
+                            if let tool = ToolRegistry.shared.tool(forName: "google_search"), tool.isEnabled {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
+                            }
+                        }
+                    }
+
+                    NavigationLink(destination: FileSystemSettingsView()) {
+                        HStack {
+                            Text("File System")
+                            Spacer()
+                            if isFileSystemEnabled {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
+                            }
                         }
                     }
                 }
@@ -48,7 +72,7 @@ public struct SettingsView: View {
                        Text("System Prompt")
                    }
                 }
-                
+
                 Section(header: Text("File System")) {
                     NavigationLink(destination: FileAccessSettingsView(fileAccessManager: FileAccessManager.shared)) {
                         HStack {
@@ -56,7 +80,7 @@ public struct SettingsView: View {
                         }
                     }
                 }
-                
+
                 Section(header: Text("General")) {
                     NavigationLink(destination: ConversationHistorySettingsView(sessionManager: sessionManager)) {
                         Text("Conversation Save Location")
@@ -69,7 +93,7 @@ public struct SettingsView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
                         configService.saveConfiguration()
-                        // Dismiss logic is handled by the parent view
+                        dismiss()
                     }
                 }
             }
@@ -84,7 +108,7 @@ public struct SettingsView: View {
 struct ModelSettingsView: View {
     @Bindable var configService: KurokoConfigurationService
     @State private var searchQuery = ""
-    
+
     private var filteredModels: [LLMModel] {
         if searchQuery.isEmpty {
             return configService.availableModels
@@ -101,7 +125,7 @@ struct ModelSettingsView: View {
             Section(header: Text("API Key")) {
                 SecureField("Enter OpenRouter API Key", text: $configService.openRouterApiKey)
             }
-            
+
             Section {
                 if configService.isFetchingModels {
                     HStack {
@@ -144,7 +168,7 @@ struct ModelSettingsView: View {
 struct ConversationHistorySettingsView: View {
     @Bindable var sessionManager: SessionManager
     @State private var showingFolderPicker = false
-    
+
     var body: some View {
         Form {
             Section(header: Text("Save Location")) {
@@ -169,7 +193,7 @@ struct ConversationHistorySettingsView: View {
             handleFolderSelection(result)
         }
     }
-    
+
     private func handleFolderSelection(_ result: Result<[URL], Error>) {
         if case .success(let urls) = result, let url = urls.first {
             sessionManager.setSaveDirectory(url)
@@ -181,7 +205,7 @@ struct ConversationHistorySettingsView: View {
 struct SystemPromptSettingsView: View {
     @Bindable var configService: KurokoConfigurationService
     @State private var showSystemInstructions = false
-    
+
     var body: some View {
         Form {
             Section {
@@ -200,7 +224,7 @@ struct SystemPromptSettingsView: View {
             } footer: {
                 Text("These fixed instructions ensure proper tool usage and response quality.")
             }
-            
+
             Section {
                 TextEditor(text: $configService.customPrompt)
                     .frame(minHeight: 200)
@@ -217,9 +241,19 @@ struct SystemPromptSettingsView: View {
 // MARK: - Search Settings
 struct SearchSettingsView: View {
     @Bindable var configService: KurokoConfigurationService
-    
+    @State private var isGoogleSearchEnabled = true
+
     var body: some View {
         Form {
+            Section {
+                Toggle("Enable Google Search", isOn: $isGoogleSearchEnabled)
+                    .onChange(of: isGoogleSearchEnabled) { _, newValue in
+                        ToolRegistry.shared.setToolEnabled("google_search", enabled: newValue)
+                    }
+            } header: {
+                Text("Tool Settings")
+            }
+
             Section {
                 SecureField("Google API Key", text: $configService.googleSearchApiKey)
                 TextField("Search Engine ID (CX)", text: $configService.googleSearchEngineId)
@@ -230,14 +264,82 @@ struct SearchSettingsView: View {
             }
         }
         .navigationTitle("Search")
+        .onAppear {
+            // Initialize toggle state from current tool state
+            if let googleSearchTool = ToolRegistry.shared.tool(forName: "google_search") {
+                isGoogleSearchEnabled = googleSearchTool.isEnabled
+            }
+        }
+    }
+}
+
+// MARK: - File System Settings
+struct FileSystemSettingsView: View {
+    @State private var isListDirectoryEnabled = true
+    @State private var isReadFileEnabled = true
+    @State private var isCreateFileEnabled = true
+    @State private var isWriteFileEnabled = true
+    @State private var isSearchFilesEnabled = true
+
+    var body: some View {
+        Form {
+            Section(header: Text("File System Tools")) {
+                Toggle("List Directory", isOn: $isListDirectoryEnabled)
+                    .onChange(of: isListDirectoryEnabled) { _, newValue in
+                        ToolRegistry.shared.setToolEnabled("list_directory", enabled: newValue)
+                    }
+
+                Toggle("Read File", isOn: $isReadFileEnabled)
+                    .onChange(of: isReadFileEnabled) { _, newValue in
+                        ToolRegistry.shared.setToolEnabled("read_file", enabled: newValue)
+                    }
+
+                Toggle("Create File", isOn: $isCreateFileEnabled)
+                    .onChange(of: isCreateFileEnabled) { _, newValue in
+                        ToolRegistry.shared.setToolEnabled("create_file", enabled: newValue)
+                    }
+
+                Toggle("Write File", isOn: $isWriteFileEnabled)
+                    .onChange(of: isWriteFileEnabled) { _, newValue in
+                        ToolRegistry.shared.setToolEnabled("write_file", enabled: newValue)
+                    }
+
+                Toggle("Search Files", isOn: $isSearchFilesEnabled)
+                    .onChange(of: isSearchFilesEnabled) { _, newValue in
+                        ToolRegistry.shared.setToolEnabled("search_files", enabled: newValue)
+                    }
+            }
+
+            Section {
+                NavigationLink(destination: FileAccessSettingsView(fileAccessManager: FileAccessManager.shared)) {
+                    Text("Configure Working Directory")
+                }
+            } header: {
+                Text("Settings")
+            } footer: {
+                Text("File system tools require a working directory to be set.")
+            }
+        }
+        .navigationTitle("File System")
+        .onAppear {
+            // Initialize toggle states from current tool states
+            let toolNames = ["list_directory", "read_file", "create_file", "write_file", "search_files"]
+            let toggles = [$isListDirectoryEnabled, $isReadFileEnabled, $isCreateFileEnabled, $isWriteFileEnabled, $isSearchFilesEnabled]
+
+            for (index, toolName) in toolNames.enumerated() {
+                if let tool = ToolRegistry.shared.tool(forName: toolName) {
+                    toggles[index].wrappedValue = tool.isEnabled
+                }
+            }
+        }
     }
 }
 
 // MARK: - Theme Settings
 struct ThemeSettingsView: View {
     @Environment(ThemeManager.self) private var themeManager
-    
-    public var body: some View {
+
+    var body: some View {
         Form {
             Section(header: Text("App Theme")) {
                 ForEach(AppTheme.allCases) { theme in
@@ -262,7 +364,7 @@ struct ThemeSettingsView: View {
     struct PreviewWrapper: View {
         @State private var sessionManager = SessionManager()
         @State private var themeManager = ThemeManager()
-        
+
         var body: some View {
             SettingsView(sessionManager: sessionManager)
                 .environment(themeManager)
