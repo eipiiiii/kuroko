@@ -1,8 +1,7 @@
 // MARK: - Agent Runner Models
 
-/// Represents the mode of operation (similar to Cline's Plan & Act modes).
+/// Represents the mode of operation (Act mode only).
 public enum OperationMode: String, Codable {
-    case plan
     case act
 }
 

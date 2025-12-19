@@ -104,10 +104,6 @@ public struct SettingsView: View {
                 }
 
                 Section(header: Text("General")) {
-                    NavigationLink(destination: OperationModeSettingsView()) {
-                        Text("Operation Mode")
-                    }
-
                     NavigationLink(destination: LanguageAndTimezoneSettingsView(configService: configService)) {
                         HStack {
                             Text("Language & Timezone")
@@ -565,62 +561,7 @@ struct AppleRemindersSettingsView: View {
     }
 }
 
-// MARK: - Operation Mode Settings
-struct OperationModeSettingsView: View {
-    @State private var currentMode: OperationMode = .act
 
-    var body: some View {
-        Form {
-            Section(header: Text("Current Mode")) {
-                Picker("Operation Mode", selection: $currentMode) {
-                    Text("Plan Mode").tag(OperationMode.plan)
-                    Text("Act Mode").tag(OperationMode.act)
-                }
-                .pickerStyle(.segmented)
-            }
-
-            Section {
-                switch currentMode {
-                case .plan:
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Plan Mode")
-                            .font(.headline)
-                        Text("Focus on planning and understanding requirements. The AI will analyze codebases, explore files, and help you develop implementation strategies without making changes.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                case .act:
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Act Mode")
-                            .font(.headline)
-                        Text("Execute the plan. The AI can make changes to your codebase, run commands, and implement the solutions you've planned.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            } header: {
-                Text("Mode Description")
-            }
-
-            Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("About Plan & Act")
-                        .font(.headline)
-                    Text("This mode system is inspired by Cline's approach to structured AI development. Plan mode helps you think through complex tasks, while Act mode executes the implementation.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            } header: {
-                Text("About")
-            }
-        }
-        .navigationTitle("Operation Mode")
-        .onAppear {
-            // Get current mode from a shared state or service if available
-            // For now, default to Act mode
-        }
-    }
-}
 
 // MARK: - Language and Timezone Settings
 struct LanguageAndTimezoneSettingsView: View {

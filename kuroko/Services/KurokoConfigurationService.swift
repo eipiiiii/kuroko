@@ -29,7 +29,7 @@ public class KurokoConfigurationService {
     public var customPrompt: String = ""
 
     // MARK: - Agent Configuration
-    public var approvalMode: ApprovalMode = .autoApprove // Changed from .alwaysAsk for testing tool functionality
+    public var approvalMode: ApprovalMode = .alwaysAsk
     public var maxToolCallsPerRun: Int = 10
     public var responseLanguage: String = "ja" // Response language: "ja" for Japanese, "en" for English
     public var timezone: String = "Asia/Tokyo" // Timezone identifier (e.g., "Asia/Tokyo", "America/New_York")
@@ -76,7 +76,19 @@ public class KurokoConfigurationService {
 ## コミュニケーション
 - ユーザー向け最終回答は<response>タグで囲む
 - 内部思考プロセスは<thinking>タグで囲む
-- ツール使用時はtool_call JSON形式を使用
+- ツール使用時は以下のJSON形式を使用（完全なJSONオブジェクトとして出力）：
+
+```json
+{
+  "type": "tool_call",
+  "tool_id": "ツール名",
+  "input": {
+    "パラメータ名": "値"
+  }
+}
+```
+
+**重要**: ツールを呼び出す場合は、上記のJSON形式をレスポンスのどこかに含めてください。XMLタグや他の形式は使用しないでください。
 
 AVAILABLE TOOLS (INJECTED AT RUNTIME)
 
@@ -137,8 +149,13 @@ AVAILABLE TOOLS (INJECTED AT RUNTIME)
         customPrompt = UserDefaults.standard.string(forKey: "customPrompt") ?? ""
         googleSearchApiKey = UserDefaults.standard.string(forKey: "googleSearchApiKey") ?? ""
         googleSearchEngineId = UserDefaults.standard.string(forKey: "googleSearchEngineId") ?? ""
-        // Force auto-approve for tool calls to ensure they execute
-        approvalMode = .autoApprove
+        // Load approval mode from UserDefaults, default to alwaysAsk for new users
+        if let approvalModeString = UserDefaults.standard.string(forKey: "approvalMode"),
+           let mode = ApprovalMode(rawValue: approvalModeString) {
+            approvalMode = mode
+        } else {
+            approvalMode = .alwaysAsk
+        }
         maxToolCallsPerRun = UserDefaults.standard.integer(forKey: "maxToolCallsPerRun")
         if maxToolCallsPerRun == 0 { maxToolCallsPerRun = 10 }
         responseLanguage = UserDefaults.standard.string(forKey: "responseLanguage") ?? "ja"
@@ -177,11 +194,17 @@ AVAILABLE TOOLS (INJECTED AT RUNTIME)
         let dynamicToolsDescription = generateDynamicToolsDescription()
         let enhancedPrompt = promptWithTimestamp.replacingOccurrences(of: "[DYNAMIC_TOOLS]", with: dynamicToolsDescription)
 
-        if customPrompt.isEmpty {
-            return enhancedPrompt
-        } else {
-            return enhancedPrompt + "\n\n## Custom Instructions:\n" + customPrompt
+        let finalPrompt = customPrompt.isEmpty ? enhancedPrompt : enhancedPrompt + "\n\n## Custom Instructions:\n" + customPrompt
+
+        // Debug logging
+        print("[PROMPT] Generated prompt with timestamp: \(timestamp)")
+        print("[PROMPT] Tools description length: \(dynamicToolsDescription.count)")
+        print("[PROMPT] Final prompt length: \(finalPrompt.count)")
+        if dynamicToolsDescription.contains("No additional tools") {
+            print("[PROMPT] WARNING: No tools available!")
         }
+
+        return finalPrompt
     }
 
     // MARK: - Helpers
@@ -217,25 +240,21 @@ AVAILABLE TOOLS (INJECTED AT RUNTIME)
             return "\nNo additional tools are currently available."
         }
 
-        let toolDescriptions: [String] = availableTools.map { tool in
-            let parametersJson: String
-            if let jsonData = try? JSONSerialization.data(withJSONObject: tool.parameters, options: .prettyPrinted),
-               let jsonString = String(data: jsonData, encoding: .utf8) {
-                parametersJson = jsonString
-            } else {
-                parametersJson = String(describing: tool.parameters)
+        // Focus on key tools for calendar and reminders
+        let keyTools = ["get_calendar_events", "get_reminders", "add_calendar_event", "add_reminder"]
+        let filteredTools = availableTools.filter { keyTools.contains($0.name) }
+
+        let toolDescriptions: [String] = filteredTools.map { tool in
+            var paramsDesc = ""
+            if let params = tool.parameters["properties"] as? [String: Any] {
+                let paramNames = params.keys.sorted()
+                paramsDesc = paramNames.joined(separator: ", ")
             }
 
-            return """
-- **\(tool.name)**: \(tool.description)
-
-  **Parameters:**
-  ```json
-  \(parametersJson)
-  ```
-"""
+            return "- **\(tool.name)**: \(tool.description)\n  Parameters: \(paramsDesc)"
         }
 
-        return toolDescriptions.joined(separator: "\n\n")
+        let result = "\n" + toolDescriptions.joined(separator: "\n\n")
+        return result
     }
 }

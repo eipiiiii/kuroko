@@ -229,10 +229,25 @@ public class AgentRunner {
             )
         }
 
-        // Fallback to custom JSON format
-        guard let data = text.data(using: .utf8),
+        // Try to extract JSON from backtick blocks or direct JSON
+        var jsonString = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Remove markdown code blocks if present
+        if jsonString.hasPrefix("```json") && jsonString.hasSuffix("```") {
+            let startIndex = jsonString.index(jsonString.startIndex, offsetBy: 7)
+            let endIndex = jsonString.index(jsonString.endIndex, offsetBy: -3)
+            jsonString = String(jsonString[startIndex..<endIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+        } else if jsonString.hasPrefix("```") && jsonString.hasSuffix("```") {
+            let startIndex = jsonString.index(jsonString.startIndex, offsetBy: 3)
+            let endIndex = jsonString.index(jsonString.endIndex, offsetBy: -3)
+            jsonString = String(jsonString[startIndex..<endIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        // Try to parse the extracted/cleaned JSON
+        guard let data = jsonString.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = json["type"] as? String, type == "tool_call" else {
+            print("[AGENT] Failed to parse tool call proposal from text: \(text.prefix(200))")
             return nil
         }
 

@@ -2,7 +2,7 @@
 
 ## 概要
 
-Kurokoは、Clineの自律制御アーキテクチャをSwiftで実装したAIエージェントアプリケーションです。Plan & Actモードを採用し、LLMとの対話を通じて自律的にタスクを実行します。
+Kurokoは、Clineの自律制御アーキテクチャをSwiftで実装したAIエージェントアプリケーションです。Actモードを採用し、LLMとの対話を通じて自律的にタスクを実行します。
 
 ## コアコンポーネント
 
@@ -58,11 +58,10 @@ enum AgentState {
 
 ### OperationMode
 
-ClineのPlan & Actモードに対応：
+Actモードのみをサポート：
 
 ```swift
 enum OperationMode: String, Codable {
-    case plan   // 計画段階：ツール使用を制限
     case act    // 実行段階：ツール使用を許可
 }
 ```

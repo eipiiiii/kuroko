@@ -19,8 +19,9 @@ public class ToolRegistry {
     ) {
         self.configService = configService
         self.searchService = searchService
-        
+
         registerDefaultTools()
+        loadToolStates()
     }
     
     private func registerDefaultTools() {
@@ -59,28 +60,38 @@ public class ToolRegistry {
     
     /// Returns a list of tools that are currently available based on app configuration and enabled status.
     func getAvailableTools() -> [Tool] {
-        return allTools.filter { tool in
+        let availableTools = allTools.filter { tool in
             // First check if explicitly enabled
             guard tool.isEnabled else { return false }
-            
+
             // Check specific requirements for certain tools
             if tool.name == "google_search" {
                 return !configService.googleSearchApiKey.isEmpty && !configService.googleSearchEngineId.isEmpty
             }
-            
+
             // File system tools require a working directory
             if ["list_directory", "read_file", "create_file", "write_file", "search_files"].contains(tool.name) {
                 return FileAccessManager.shared.workingDirectoryURL != nil
             }
-            
+
             return true
         }
+
+        // Debug logging
+        print("[TOOL_REGISTRY] Total registered tools: \(allTools.count)")
+        print("[TOOL_REGISTRY] Available tools: \(availableTools.map { $0.name })")
+        if availableTools.isEmpty {
+            print("[TOOL_REGISTRY] WARNING: No tools available!")
+        }
+
+        return availableTools
     }
     
     /// Toggles the enabled state of a tool
     func setToolEnabled(_ name: String, enabled: Bool) {
         if let tool = tool(forName: name) {
             tool.isEnabled = enabled
+            saveToolStates()
         }
     }
 
@@ -88,6 +99,32 @@ public class ToolRegistry {
     func setToolAutoApproval(_ name: String, autoApproval: Bool) {
         if let tool = tool(forName: name) {
             tool.autoApproval = autoApproval
+            saveToolStates()
+        }
+    }
+
+    /// Loads tool states from UserDefaults
+    private func loadToolStates() {
+        for tool in allTools {
+            let enabledKey = "tool_\(tool.name)_enabled"
+            let autoApprovalKey = "tool_\(tool.name)_autoApproval"
+
+            // Load enabled state (default to tool's initial value if not set)
+            tool.isEnabled = UserDefaults.standard.object(forKey: enabledKey) as? Bool ?? tool.isEnabled
+
+            // Load auto-approval state (default to tool's initial value if not set)
+            tool.autoApproval = UserDefaults.standard.object(forKey: autoApprovalKey) as? Bool ?? tool.autoApproval
+        }
+    }
+
+    /// Saves tool states to UserDefaults
+    private func saveToolStates() {
+        for tool in allTools {
+            let enabledKey = "tool_\(tool.name)_enabled"
+            let autoApprovalKey = "tool_\(tool.name)_autoApproval"
+
+            UserDefaults.standard.set(tool.isEnabled, forKey: enabledKey)
+            UserDefaults.standard.set(tool.autoApproval, forKey: autoApprovalKey)
         }
     }
 }

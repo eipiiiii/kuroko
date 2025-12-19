@@ -30,8 +30,11 @@ public class DefaultToolExecutor: ToolExecutor {
         }
         
         print("🔧 Executing tool: \(functionName) with arguments: \(argsDict)")
-        
-        return try await tool.execute(arguments: argsDict)
+
+        let result = try await tool.execute(arguments: argsDict)
+        print("🔧 Tool \(functionName) returned result (length: \(result.count)): \(result)")
+
+        return result
     }
     
     private func parseArguments(_ argumentsString: String) throws -> [String: Any] {

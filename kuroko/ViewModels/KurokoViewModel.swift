@@ -29,7 +29,7 @@ public class KurokoViewModel {
     var messages: [ChatMessage] = []
     var inputText: String = ""
     var viewState: ViewState = .idle
-    var operationMode: OperationMode = .plan
+    var operationMode: OperationMode = .act
     
     // MARK: - Services (Injected through protocols)
     private let configService: KurokoConfigurationService
@@ -76,10 +76,6 @@ public class KurokoViewModel {
         }
     }
 
-    func switchOperationMode(to newMode: OperationMode) {
-        operationMode = newMode
-    }
-    
     func stopGeneration() {
         currentTask?.cancel()
         currentTask = nil
