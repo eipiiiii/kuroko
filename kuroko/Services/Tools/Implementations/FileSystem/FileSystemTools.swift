@@ -16,6 +16,7 @@ class ListDirectoryTool: Tool {
     ]
     
     var isEnabled: Bool = true
+    var autoApproval: Bool = false
 
     func execute(arguments: [String: Any]) async throws -> String {
         let path = arguments["path"] as? String ?? "."
@@ -43,6 +44,7 @@ class ReadFileTool: Tool {
     ]
     
     var isEnabled: Bool = true
+    var autoApproval: Bool = false
 
     func execute(arguments: [String: Any]) async throws -> String {
         guard let path = arguments["path"] as? String else {
@@ -72,6 +74,7 @@ class CreateFileTool: Tool {
     ]
     
     var isEnabled: Bool = true
+    var autoApproval: Bool = false
 
     func execute(arguments: [String: Any]) async throws -> String {
         guard let path = arguments["path"] as? String else {
@@ -105,6 +108,7 @@ class WriteFileTool: Tool {
     ]
     
     var isEnabled: Bool = true
+    var autoApproval: Bool = false
 
     func execute(arguments: [String: Any]) async throws -> String {
         guard let path = arguments["path"] as? String else {
@@ -142,6 +146,7 @@ class SearchFilesTool: Tool {
     ]
     
     var isEnabled: Bool = true
+    var autoApproval: Bool = false
 
     func execute(arguments: [String: Any]) async throws -> String {
         guard let path = arguments["path"] as? String else {

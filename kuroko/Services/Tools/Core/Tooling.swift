@@ -6,16 +6,19 @@ import Foundation
 public protocol Tool: AnyObject {
     /// The name of the tool, matching the function name used in the LLM's tool-calling request.
     var name: String { get }
-    
+
     /// A description of what the tool does, for the LLM to understand its purpose.
     var description: String { get }
-    
+
     /// The JSON schema for the tool's parameters.
     var parameters: [String: Any] { get }
-    
+
     /// Whether the tool is currently enabled and available for use.
     var isEnabled: Bool { get set }
-    
+
+    /// Whether this tool should be auto-approved without user confirmation.
+    var autoApproval: Bool { get set }
+
     /// Executes the tool with the given arguments.
     /// - Parameter arguments: A dictionary of arguments, parsed from the LLM's request.
     /// - Returns: A string result to be sent back to the LLM.

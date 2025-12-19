@@ -34,9 +34,7 @@ class FileAccessManager {
         // セキュリティスコープリソースへのアクセス開始
         if url.startAccessingSecurityScopedResource() {
             workingDirectoryURL = url
-            print("📁 作業ディレクトリを設定: \(url.path)")
         } else {
-            print("⚠️ セキュリティスコープリソースへのアクセス失敗")
             workingDirectoryURL = url
         }
         
@@ -49,42 +47,38 @@ class FileAccessManager {
             #endif
             userDefaults.set(bookmarkData, forKey: workingDirectoryKey)
         } catch {
-            print("❌ ブックマーク保存エラー: \(error)")
+            // ブックマーク保存エラーは無視
         }
     }
     
     private func loadWorkingDirectory() {
         guard let bookmarkData = userDefaults.data(forKey: workingDirectoryKey) else {
-            print("ℹ️ 作業ディレクトリが設定されていません")
             return
         }
-        
+
         do {
             var isStale = false
             #if os(macOS)
             let url = try URL(resolvingBookmarkData: bookmarkData, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &isStale)
-            
+
             if isStale {
                 let newBookmarkData = try url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
                 userDefaults.set(newBookmarkData, forKey: workingDirectoryKey)
             }
             #else
             let url = try URL(resolvingBookmarkData: bookmarkData, options: .withoutUI, relativeTo: nil, bookmarkDataIsStale: &isStale)
-            
+
             if isStale {
                 let newBookmarkData = try url.bookmarkData(options: .minimalBookmark, includingResourceValuesForKeys: nil, relativeTo: nil)
                 userDefaults.set(newBookmarkData, forKey: workingDirectoryKey)
             }
             #endif
-            
+
             if url.startAccessingSecurityScopedResource() {
                 workingDirectoryURL = url
-                print("📁 作業ディレクトリを読み込み: \(url.path)")
-            } else {
-                print("⚠️ セキュリティスコープリソースへのアクセス失敗")
             }
         } catch {
-            print("❌ ブックマーク読み込みエラー: \(error)")
+            // ブックマーク読み込みエラーは無視
         }
     }
     
@@ -94,7 +88,6 @@ class FileAccessManager {
         }
         workingDirectoryURL = nil
         userDefaults.removeObject(forKey: workingDirectoryKey)
-        print("🗑️ 作業ディレクトリをクリア")
     }
     
     func getCurrentWorkingDirectoryPath() -> String? {
@@ -105,19 +98,17 @@ class FileAccessManager {
     
     func validatePath(_ relativePath: String) -> URL? {
         guard let workingDir = workingDirectoryURL else {
-            print("⚠️ 作業ディレクトリが設定されていません")
             return nil
         }
-        
+
         // 相対パスから絶対パスを構築
         let fullURL = workingDir.appendingPathComponent(relativePath)
-        
+
         // パスが作業ディレクトリ内にあることを確認
         guard fullURL.path.hasPrefix(workingDir.path) else {
-            print("⚠️ パスが作業ディレクトリ外です: \(relativePath)")
             return nil
         }
-        
+
         return fullURL
     }
 }

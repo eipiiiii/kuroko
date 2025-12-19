@@ -36,9 +36,7 @@ public class SessionManager {
         // セキュリティスコープリソースへのアクセス開始
         if url.startAccessingSecurityScopedResource() {
             saveDirectoryURL = url
-            print("保存ディレクトリを設定: \(url.path)")
         } else {
-            print("セキュリティスコープリソースへのアクセス失敗 (setSaveDirectory)")
             // 失敗してもとりあえず設定 (非サンドボックス環境などのため)
             saveDirectoryURL = url
         }
@@ -85,9 +83,7 @@ public class SessionManager {
             // セキュリティスコープリソースにアクセス
             if url.startAccessingSecurityScopedResource() {
                 saveDirectoryURL = url
-                print("保存ディレクトリを設定: \(url.path)")
             } else {
-                print("セキュリティスコープリソースへのアクセス失敗")
                 setupDefaultDirectory()
             }
         } catch {
@@ -106,9 +102,8 @@ public class SessionManager {
                 try FileManager.default.createDirectory(at: kurokoURL, withIntermediateDirectories: true, attributes: nil)
             }
             saveDirectoryURL = kurokoURL
-            print("デフォルトディレクトリを使用: \(kurokoURL.path)")
         } catch {
-            print("デフォルトディレクトリ作成失敗: \(error)")
+            // デフォルトディレクトリ作成失敗は無視
         }
     }
     
@@ -172,73 +167,62 @@ public class SessionManager {
     func saveCurrentSession() {
         guard let session = currentSession,
               let directoryURL = saveDirectoryURL else {
-            print("⚠️ セッション保存スキップ: currentSession または saveDirectoryURL が nil")
             return
         }
-        
+
         // タイトルが「新しい会話」の場合、最初のメッセージから生成
         var sessionToSave = session
         if sessionToSave.title == "新しい会話" && !sessionToSave.messages.isEmpty {
             let firstUserMessage = sessionToSave.messages.first { $0.role == "user" }?.text ?? "会話"
             sessionToSave.title = firstUserMessage.replacingOccurrences(of: "\n", with: " ").prefix(30).trimmingCharacters(in: .whitespaces)
         }
-        
+
         sessionToSave.updatedAt = Date()
-        
+
         // JSONで保存
         let fileName = "\(sessionToSave.id.uuidString).json"
         let fileURL = directoryURL.appendingPathComponent(fileName)
-        
+
         // 古いMDファイルのパス（存在すれば削除するため）
         let legacyFileName = "\(sessionToSave.id.uuidString).md"
         let legacyFileURL = directoryURL.appendingPathComponent(legacyFileName)
-        
-        print("📝 セッション保存開始: \(fileName)")
-        print("📁 保存先: \(fileURL.path)")
-        
+
         // エンコード
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting = .prettyPrinted
             encoder.dateEncodingStrategy = .iso8601
             let data = try encoder.encode(sessionToSave)
-            
-            print("✅ エンコード成功: \(data.count) bytes")
-            
+
             // バックグラウンドタスクで保存（セキュリティスコープを正しく管理）
             Task {
                 // セキュリティスコープリソースへのアクセスを開始
                 let accessGranted = directoryURL.startAccessingSecurityScopedResource()
-                print("🔐 セキュリティスコープアクセス: \(accessGranted ? "成功" : "失敗")")
-                
+
                 defer {
                     if accessGranted {
                         directoryURL.stopAccessingSecurityScopedResource()
-                        print("🔓 セキュリティスコープアクセス終了")
                     }
                 }
-                
+
                 do {
                     try data.write(to: fileURL, options: .atomic)
-                    print("✅ ファイル保存成功: \(fileName)")
-                    
+
                     // 保存に成功したら、古いMDファイルを削除（移行完了）
                     if FileManager.default.fileExists(atPath: legacyFileURL.path) {
                         try FileManager.default.removeItem(at: legacyFileURL)
-                        print("🗑️ Legacy markdown file migrated and deleted: \(legacyFileName)")
                     }
                 } catch {
-                    print("❌ セッション保存エラー: \(error)")
-                    print("❌ エラー詳細: \(error.localizedDescription)")
+                    // 保存エラーは無視（ログ出力なし）
                 }
             }
         } catch {
-            print("❌ セッションエンコードエラー: \(error)")
+            // エンコードエラーは無視（ログ出力なし）
         }
-        
+
         // メモリ内のデータを更新
         currentSession = sessionToSave
-        
+
         // セッションリストを更新
         if let index = sessions.firstIndex(where: { $0.id == sessionToSave.id }) {
             sessions[index] = sessionToSave
@@ -303,9 +287,9 @@ public class SessionManager {
         created: \(ISO8601DateFormatter().string(from: session.createdAt))
         updated: \(ISO8601DateFormatter().string(from: session.updatedAt))
         ---
-        
+
         # \(session.title)
-        
+
         """
         
         let dateFormatter = DateFormatter()
@@ -316,14 +300,14 @@ public class SessionManager {
             let timestamp = dateFormatter.string(from: message.timestamp)
             
             markdown += """
-            
+
             ## \(role)
             *\(timestamp)*
-            
+
             \(message.text)
-            
+
             ---
-            
+
             """
         }
         
@@ -429,3 +413,4 @@ public class SessionManager {
         return messages
     }
 }
+

@@ -4,9 +4,12 @@ import Foundation
 
 /// Represents the role of a message sender in a chat conversation.
 public enum MessageRole: String, Codable {
+    case system
     case user
-    case model
+    case assistant
     case tool
+    case toolProposal
+    case toolResult
 }
 
 /// Represents a single message in a chat conversation.

@@ -16,6 +16,7 @@ class GoogleSearchTool: Tool {
     ]
     
     var isEnabled: Bool = true
+    var autoApproval: Bool = true
     
     private let searchService: SearchService
     private let configService: KurokoConfigurationService

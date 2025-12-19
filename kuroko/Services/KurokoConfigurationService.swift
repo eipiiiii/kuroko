@@ -16,7 +16,7 @@ public class KurokoConfigurationService {
     // MARK: - Model Configuration
     public var availableModels: [LLMModel] = []
     public var isFetchingModels = false
-    
+
     /// The ID of the currently selected model. Stored in UserDefaults.
     public var selectedModelId: String = "openai/gpt-4o-mini" // Default model
 
@@ -27,126 +27,60 @@ public class KurokoConfigurationService {
 
     // MARK: - Prompts
     public var customPrompt: String = ""
-    
+
+    // MARK: - Agent Configuration
+    public var approvalMode: ApprovalMode = .autoApprove // Changed from .alwaysAsk for testing tool functionality
+    public var maxToolCallsPerRun: Int = 10
+    public var responseLanguage: String = "ja" // Response language: "ja" for Japanese, "en" for English
+    public var timezone: String = "Asia/Tokyo" // Timezone identifier (e.g., "Asia/Tokyo", "America/New_York")
+
     // MARK: - Private Properties
     private let openRouterAPIService = OpenRouterAPIService()
     private let modelsCacheKey = "openRouterModelsCache"
-    
+
     // MARK: - Fixed System Instructions
     public static let FIXED_SYSTEM_PROMPT = """
-# AI Assistant with Tool Capabilities
+あなたは自律的な汎用エージェントである。
 
-You are a helpful AI assistant integrated into a developer workflow.
-Your primary goals are:
-1) solve the user's task correctly,
-2) minimize unnecessary tool calls, and
-3) keep the user in control of impactful operations.
+## 存在目的
+ユーザーの課題を解決し、目標達成を支援すること。
 
-You operate in an environment where tools are provided dynamically at runtime by a ToolRegistry.
-The list of available tools (name, description, JSON parameter schema) is injected later in this prompt.
+## 行動原則
+1. 完全性を追求せよ：解決に必要な情報が揃うまで収集を続けよ
+2. 効率を最適化せよ：最小の労力で最大の効果を求めよ
+3. 安全性を確保せよ：破壊的な行動を避け、常に安全策を選択せよ
+4. 透明性を維持せよ：判断プロセスと決定根拠を説明せよ
 
-==================================================
-TOOL USE – GENERAL PRINCIPLES
-==================================================
+## 責任の所在
+- 課題解決の主導権を担う
+- 必要に応じて情報を収集し、判断を下す
+- 実行可能な解決策を提示し、実装する
+- リスクを評価し、適切な対策を講じる
 
-- You have access to a set of tools that can be executed on behalf of the user.
-- Use tools only when they are genuinely needed to make progress on the current task or to obtain information that is not already present in the conversation.
-- Prefer reasoning and using information already available in the chat history over calling tools again.
-- Never guess tool names or parameter shapes. Always follow the JSON parameter schema shown in the tool definition.
+## 制約条件
+- 許可されていない領域に踏み込まない
+- システムの安定性を損なう操作を避ける
+- ユーザーのプライバシーとセキュリティを尊重する
+- 倫理的・法的制約を守る
 
-Before calling any tool, silently run this checklist (without showing it to the user):
+## 現在の情報
+- 現在の日時: [DYNAMIC_TIMESTAMP]
+- タイムゾーン: [TIMEZONE_INFO]
 
-1. Do you already have enough information to answer the user directly?
-2. Has this tool already been called successfully in this task with the **same** parameters?
-3. Has anything changed (user input, environment, files, time-sensitive data) that would make previous results stale?
-4. Is this tool clearly the best fit among the available tools for the current subtask?
+## 応答原則
+- 解決に至るまで思考を続けよ
+- 必要に応じてツールを使用せよ
+- 最終的な解決策を提示せよ
+- 実行過程を透明に説明せよ
 
-If the answer to (1) is “yes”, DO NOT call any tool. Instead, answer the user directly.
-If the answer to (2) is “yes” and the answer to (3) is “no”, DO NOT call that tool again. Reuse the previous result in your reasoning.
-Only proceed to a tool call if it is clearly necessary and justified.
+## コミュニケーション
+- ユーザー向け最終回答は<response>タグで囲む
+- 内部思考プロセスは<thinking>タグで囲む
+- ツール使用時はtool_call JSON形式を使用
 
-==================================================
-TOOL CALL RULES
-==================================================
-
-- Use at most **one** tool call at a time.
-- After issuing a tool call, you must wait for the tool result before deciding on the next action.
-- Do not emit multiple tool calls in a single step, even if several tools might be useful.
-- After each tool result, you must:
-  - carefully read and interpret the output,
-  - update your plan for the task,
-  - and then choose exactly one of:
-    - answer the user directly with a natural-language message, or
-    - call one additional tool if and only if it is strictly necessary.
-
-REPEATED TOOL CALLS:
-
-- Do NOT “double check” a successful tool call by calling the same tool again with identical parameters, unless:
-  - the previous call failed or returned an explicit error, or
-  - the user has changed their request or provided new information that invalidates the previous result, or
-  - the underlying data is time-dependent and likely to have changed (e.g., external APIs with rapidly changing data).
-- If a previous tool call succeeded and nothing relevant has changed, treat its result as the ground truth for your subsequent reasoning.
-- If the system or environment returns a message indicating that:
-  - the tool cannot be called again yet, or
-  - you must first assess the output of a previous tool,
-  then:
-  - do NOT attempt to call that tool again immediately,
-  - instead, summarize the latest tool result, reason about it, and decide whether:
-    - you can now answer the user directly, or
-    - a different tool (not the same one) is appropriate, or
-    - you need to ask the user a clarifying question.
-
-PARAMETERS AND SCHEMAS:
-
-- For each tool, you are given:
-  - a name,
-  - a description that explains when the tool should be used,
-  - and a JSON parameter schema describing required and optional fields.
-- When calling a tool:
-  - include all required parameters with valid, concrete values,
-  - avoid sending null, empty, or placeholder values unless explicitly allowed,
-  - keep parameters minimal but sufficient to accomplish the current step.
-- Do not invent extra parameters that are not present in the schema.
-- If you are missing required information for a parameter, ask the user a clear follow-up question instead of guessing.
-
-==================================================
-INTERACTION FLOW
-==================================================
-
-In every turn, follow this high-level loop:
-
-1. Understand the user’s current request and the overall task goal.
-2. Review what you already know from:
-   - previous tool results in this task,
-   - previous messages in the conversation,
-   - and any other context provided.
-3. Decide whether you can respond directly **without** tools.
-4. If a tool is needed, select the single most appropriate tool based on:
-   - its description,
-   - its parameter schema,
-   - and the current subtask.
-5. Call the tool with correctly structured parameters.
-6. Wait for the tool result, then:
-   - analyze it carefully,
-   - update your mental model of the task state,
-   - and either:
-     - answer the user, or
-     - select exactly one next tool to call if strictly necessary.
-
-You should always aim to complete the user’s task with:
-- as few tool calls as reasonably possible,
-- no redundant calls to tools that have already succeeded with the same inputs,
-- and clear, concise explanations of what you did and what the result means for the user.
-
-==================================================
 AVAILABLE TOOLS (INJECTED AT RUNTIME)
-==================================================
-
-Below, the runtime will inject the list of tools from the ToolRegistry.
-For each tool you will see its name, description, and JSON parameter schema.
 
 [DYNAMIC_TOOLS]
-
 """
 
     // MARK: - Initialization
@@ -159,26 +93,26 @@ For each tool you will see its name, description, and JSON parameter schema.
     @MainActor
     public func fetchOpenRouterModels() async {
         guard !openRouterApiKey.isEmpty, !isFetchingModels else { return }
-        
+
         isFetchingModels = true
         defer { isFetchingModels = false }
-        
+
         do {
             let apiModels = try await openRouterAPIService.fetchModels(apiKey: openRouterApiKey)
             self.availableModels = apiModels.map { LLMModel(from: $0) }
             saveModelsToCache()
-            
+
             // If the currently selected model doesn't exist in the new list, select the first one.
             if !availableModels.contains(where: { $0.modelName == selectedModelId }) {
                 selectedModelId = availableModels.first?.modelName ?? ""
             }
-            
+
         } catch {
             print("Failed to fetch OpenRouter models: \(error)")
             // Optionally, present an error to the user
         }
     }
-    
+
     private func saveModelsToCache() {
         let encoder = JSONEncoder()
         if let encoded = try? encoder.encode(availableModels) {
@@ -203,8 +137,14 @@ For each tool you will see its name, description, and JSON parameter schema.
         customPrompt = UserDefaults.standard.string(forKey: "customPrompt") ?? ""
         googleSearchApiKey = UserDefaults.standard.string(forKey: "googleSearchApiKey") ?? ""
         googleSearchEngineId = UserDefaults.standard.string(forKey: "googleSearchEngineId") ?? ""
+        // Force auto-approve for tool calls to ensure they execute
+        approvalMode = .autoApprove
+        maxToolCallsPerRun = UserDefaults.standard.integer(forKey: "maxToolCallsPerRun")
+        if maxToolCallsPerRun == 0 { maxToolCallsPerRun = 10 }
+        responseLanguage = UserDefaults.standard.string(forKey: "responseLanguage") ?? "ja"
+        timezone = UserDefaults.standard.string(forKey: "timezone") ?? "Asia/Tokyo"
     }
-    
+
     /// Save all configuration to UserDefaults.
     public func saveConfiguration() {
         UserDefaults.standard.set(openRouterApiKey, forKey: "openRouterApiKey")
@@ -212,20 +152,60 @@ For each tool you will see its name, description, and JSON parameter schema.
         UserDefaults.standard.set(customPrompt, forKey: "customPrompt")
         UserDefaults.standard.set(googleSearchApiKey, forKey: "googleSearchApiKey")
         UserDefaults.standard.set(googleSearchEngineId, forKey: "googleSearchEngineId")
+        UserDefaults.standard.set(approvalMode.rawValue, forKey: "approvalMode")
+        UserDefaults.standard.set(maxToolCallsPerRun, forKey: "maxToolCallsPerRun")
+        UserDefaults.standard.set(responseLanguage, forKey: "responseLanguage")
+        UserDefaults.standard.set(timezone, forKey: "timezone")
     }
 
-    /// Get the combined system prompt (fixed + custom).
-    public func getCombinedPrompt() -> String {
-        let timestamp = ISO8601DateFormatter().string(from: Date())
-        let promptWithTimestamp = Self.FIXED_SYSTEM_PROMPT.replacingOccurrences(of: "[DYNAMIC_TIMESTAMP]", with: timestamp)
-        let dynamicToolsDescription = generateDynamicToolsDescription()
+    /// Creates an `AgentConfig` object from the current service configuration.
+    public func createAgentConfig() -> AgentConfig {
+        return AgentConfig(
+            approvalMode: self.approvalMode,
+            maxToolCallsPerRun: self.maxToolCallsPerRun
+        )
+    }
 
+    /// Get the combined system prompt (fixed + custom instructions).
+    public func getCombinedPrompt() -> String {
+        let timestamp = getCurrentTimestampInTimezone()
+        let timezoneInfo = getTimezoneDisplayName()
+        let promptWithTimestamp = Self.FIXED_SYSTEM_PROMPT
+            .replacingOccurrences(of: "[DYNAMIC_TIMESTAMP]", with: timestamp)
+            .replacingOccurrences(of: "[TIMEZONE_INFO]", with: timezoneInfo)
+
+        let dynamicToolsDescription = generateDynamicToolsDescription()
         let enhancedPrompt = promptWithTimestamp.replacingOccurrences(of: "[DYNAMIC_TOOLS]", with: dynamicToolsDescription)
 
         if customPrompt.isEmpty {
             return enhancedPrompt
         } else {
             return enhancedPrompt + "\n\n## Custom Instructions:\n" + customPrompt
+        }
+    }
+
+    // MARK: - Helpers
+    private func getCurrentTimestampInTimezone() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss zzz"
+        if let tz = TimeZone(identifier: timezone) {
+            formatter.timeZone = tz
+        }
+        return formatter.string(from: Date())
+    }
+
+    private func getTimezoneDisplayName() -> String {
+        if let tz = TimeZone(identifier: timezone) {
+            let seconds = tz.secondsFromGMT()
+            let absSeconds = abs(seconds)
+            let hours = absSeconds / 3600
+            let minutes = (absSeconds % 3600) / 60
+            let sign = seconds >= 0 ? "+" : "-"
+            let abbr = tz.abbreviation() ?? "GMT"
+            let offset = String(format: "%@%02d:%02d", sign, hours, minutes)
+            return "\(tz.identifier) (\(abbr), GMT\(offset))"
+        } else {
+            return timezone
         }
     }
 
@@ -237,7 +217,7 @@ For each tool you will see its name, description, and JSON parameter schema.
             return "\nNo additional tools are currently available."
         }
 
-        let toolDescriptions = availableTools.map { tool in
+        let toolDescriptions: [String] = availableTools.map { tool in
             let parametersJson: String
             if let jsonData = try? JSONSerialization.data(withJSONObject: tool.parameters, options: .prettyPrinted),
                let jsonString = String(data: jsonData, encoding: .utf8) {
@@ -254,13 +234,8 @@ For each tool you will see its name, description, and JSON parameter schema.
   \(parametersJson)
   ```
 """
-        }.joined(separator: "\n\n")
+        }
 
-        return """
-
-## Available Tools:
-
-\(toolDescriptions)
-"""
+        return toolDescriptions.joined(separator: "\n\n")
     }
 }

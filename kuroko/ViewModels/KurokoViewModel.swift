@@ -5,12 +5,14 @@ import SwiftUI
 enum ViewState: Equatable {
     case idle
     case loading
+    case awaitingApproval
     case error(String)
-    
+
     static func == (lhs: ViewState, rhs: ViewState) -> Bool {
         switch (lhs, rhs) {
         case (.idle, .idle): return true
         case (.loading, .loading): return true
+        case (.awaitingApproval, .awaitingApproval): return true
         case (.error(let a), .error(let b)): return a == b
         default: return false
         }
@@ -27,12 +29,14 @@ public class KurokoViewModel {
     var messages: [ChatMessage] = []
     var inputText: String = ""
     var viewState: ViewState = .idle
+    var operationMode: OperationMode = .plan
     
     // MARK: - Services (Injected through protocols)
     private let configService: KurokoConfigurationService
     private var llmService: LLMService
     private let toolExecutor: ToolExecutor
     let sessionManager: SessionManager
+    private var agentRunner: AgentRunner?
     
     // MARK: - Task Management
     private var currentTask: Task<Void, Never>?
@@ -71,6 +75,10 @@ public class KurokoViewModel {
             self.viewState = .error(error.localizedDescription)
         }
     }
+
+    func switchOperationMode(to newMode: OperationMode) {
+        operationMode = newMode
+    }
     
     func stopGeneration() {
         currentTask?.cancel()
@@ -89,45 +97,123 @@ public class KurokoViewModel {
     }
     
     func retryLastMessage() {
-        // Simple retry logic can be enhanced later
+        guard !messages.isEmpty else { return }
+
+        // Find the last user message
+        guard let lastUserMessageIndex = messages.lastIndex(where: { $0.role == .user }) else { return }
+        let lastUserMessage = messages[lastUserMessageIndex]
+
+        // Remove all messages after the last user message (assistant responses, tool calls, etc.)
+        messages.removeSubrange((lastUserMessageIndex + 1)..<messages.endIndex)
+
+        // Reset agent runner
+        agentRunner = nil
+
+        // Reset state
+        inputText = lastUserMessage.text
+        viewState = .idle
+
+        // Send the message again
+        sendMessage()
+    }
+
+    func approveToolCall() async {
+        Task {
+            do {
+                try await agentRunner?.approveToolCall()
+            } catch {
+                viewState = .error("Error approving tool call: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func rejectToolCall() async {
+        Task {
+            do {
+                try await agentRunner?.rejectToolCall()
+            } catch {
+                viewState = .error("Error rejecting tool call: \(error.localizedDescription)")
+            }
+        }
     }
     
     @MainActor
     func sendMessage() {
         let userMessageText = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !userMessageText.isEmpty else { return }
-        
+
         // Reset state
         inputText = ""
         viewState = .loading
-        
+
         // Append user message
         messages.append(ChatMessage(role: .user, text: userMessageText))
-        
-        // Append placeholder for AI response
-        let aiMessageIndex = messages.count
-        messages.append(ChatMessage(role: .model, text: "", isStreaming: true))
-        
+
+        // Log user message
+        print("[CHAT] User: \(userMessageText)")
+
+        // Initialize agent runner if needed
+        if agentRunner == nil {
+            agentRunner = AgentRunner(
+                config: configService.createAgentConfig(),
+                llmService: llmService,
+                toolExecutor: toolExecutor,
+                systemPrompt: configService.getCombinedPrompt()
+            )
+            agentRunner?.onMessageAdded = { [weak self] message in
+                Task { @MainActor in
+                    guard let self = self else { return }
+                    // If the last message is from the assistant, update it. Otherwise, append a new one.
+                    // This handles the streaming case where the message is progressively built.
+                    if self.messages.last?.role == .assistant {
+                        self.messages[self.messages.count - 1] = message
+                    } else {
+                        self.messages.append(message)
+
+                        // Log assistant messages
+                        if message.role == .assistant && !message.isStreaming {
+                            print("[CHAT] Assistant: \(message.text)")
+                        } else if message.role == .toolResult {
+                            print("[CHAT] Tool Result: \(message.text)")
+                        }
+                    }
+                }
+            }
+            agentRunner?.onStateChange = { [weak self] state in
+                Task { @MainActor in
+                    self?.handleAgentStateChange(state)
+                }
+            }
+        }
+
         currentTask = Task {
             do {
-                try await processMessage(text: userMessageText, aiMessageIndex: aiMessageIndex)
+                // Start agent with full conversation history
+                try await self.agentRunner?.startWithHistory(self.messages)
             } catch {
                 await MainActor.run {
                     if let toolError = error as? ToolError {
                         self.viewState = .error("Tool Error: \(toolError.localizedDescription)")
+                        print("[ERROR] Tool Error: \(toolError.localizedDescription)")
                     } else {
                         self.viewState = .error("Error: \(error.localizedDescription)")
+                        print("[ERROR] Agent Error: \(error.localizedDescription)")
                     }
-                    messages[aiMessageIndex].isStreaming = false
+
+                    // If an error occurs, ensure the streaming state is stopped.
+                    if let lastIndex = self.messages.indices.last, self.messages[lastIndex].isStreaming {
+                        self.messages[lastIndex].isStreaming = false
+                    }
                 }
             }
         }
     }
     
     // MARK: - Session Management
-    
+
     func startNewSession() {
         messages = []
+        agentRunner = nil
         sessionManager.createNewSession()
     }
     
@@ -149,64 +235,22 @@ public class KurokoViewModel {
     }
     
     // MARK: - Private Core Logic
-    
-    private func processMessage(text: String, aiMessageIndex: Int) async throws {
-        let history = messages.dropLast() // Exclude the placeholder
-        let config = LLMConfig(model: configService.selectedModel)
-        
-        try await llmService.sendMessage(
-            message: text,
-            history: Array(history),
-            config: config,
-            onChunk: { [weak self] chunk in
-                Task { @MainActor in
-                    self?.messages[aiMessageIndex].text += chunk
-                }
-            },
-            onToolCall: { [weak self] toolCall in
-                Task { @MainActor in
-                    self?.handleToolCall(toolCall, aiMessageIndex: aiMessageIndex)
-                }
-            }
-        )
-        
-        await MainActor.run {
-            messages[aiMessageIndex].isStreaming = false
+
+    @MainActor
+    private func handleAgentStateChange(_ state: AgentState) {
+        switch state {
+        case .awaitingApproval:
+            viewState = .awaitingApproval
+        case .executingTool:
+            // Keep loading state during tool execution
+            viewState = .loading
+        case .completed:
             viewState = .idle
             saveCurrentSession()
-        }
-    }
-    
-    @MainActor
-    private func handleToolCall(_ toolCall: ToolCall, aiMessageIndex: Int) {
-        // Update message with tool call info
-        messages[aiMessageIndex].toolCalls = [toolCall]
-        messages[aiMessageIndex].isStreaming = false
-        
-        // Add visual indicator for the tool call
-        messages[aiMessageIndex].text += "\n\n\(toolCall.function.name)..." // Simple indicator
-        
-        // Execute the tool and process the result
-        Task {
-            do {
-                let result = try await toolExecutor.executeToolCall(toolCall)
-                
-                await MainActor.run {
-                    // Add tool result message
-                    messages.append(ChatMessage(role: .tool, text: result, toolCallId: toolCall.id))
-                    
-                    // Add a new placeholder for the AI's final response
-                    let newAiIndex = messages.count
-                    messages.append(ChatMessage(role: .model, text: "", isStreaming: true))
-                    
-                    // Make a new call to the LLM with the tool result
-                    Task {
-                        try await self.processMessage(text: "", aiMessageIndex: newAiIndex)
-                    }
-                }
-            } catch {
-                viewState = .error("Tool Error: \(error.localizedDescription)")
-            }
+        case .failed(let error):
+            viewState = .error("Agent Error: \(error)")
+        default:
+            break
         }
     }
 }

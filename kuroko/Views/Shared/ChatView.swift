@@ -13,6 +13,32 @@ struct ChatView: View {
             #endif
             
             VStack(spacing: 0) {
+                // Operation Mode Header
+                HStack {
+                    Spacer()
+                    HStack(spacing: 8) {
+                        Image(systemName: viewModel.operationMode == .plan ? "lightbulb" : "hammer")
+                            .foregroundStyle(.secondary)
+                        Text(viewModel.operationMode == .plan ? "Plan Mode" : "Act Mode")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Button(action: {
+                            viewModel.switchOperationMode(to: viewModel.operationMode == .plan ? .act : .plan)
+                        }) {
+                            Image(systemName: "arrow.left.arrow.right")
+                                .foregroundStyle(Color.accentColor)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Capsule())
+                    Spacer()
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
+
                 // Chat List
                 ScrollViewReader { proxy in
                     ScrollView {

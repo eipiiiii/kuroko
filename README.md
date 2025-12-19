@@ -1,246 +1,154 @@
 # Kuroko
 
-<div align="center">
+Kurokoは、Clineの自律制御の仕組みをSwiftで実装したAIエージェントアプリです。Plan & Actモードをサポートし、LLMとの対話を通じてタスクを実行します。
 
-**A powerful, privacy-focused AI assistant for iOS and macOS**
+## 特徴
 
-[![Platform](https://img.shields.io/badge/platform-iOS%20%7C%20macOS-blue.svg)](https://www.apple.com)
-[![Swift](https://img.shields.io/badge/Swift-5.9+-orange.svg)](https://swift.org)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+### Plan & Act モード
+Clineの自律制御アプローチを採用したPlan & Actモードを実装しています。
 
-[Features](#features) • [Installation](#installation) • [Usage](#usage) • [Architecture](#architecture) • [Contributing](#contributing)
+- **Plan Mode**: 計画段階
+  - タスクの分析と理解
+  - コードベースの探索
+  - 実装戦略の立案
+  - ツールの使用を制限
 
-</div>
+- **Act Mode**: 実行段階
+  - 計画されたタスクの実行
+  - ファイルの編集やコマンドの実行
+  - ツールの使用が可能
 
----
+### ツール統合
+さまざまなツールを統合し、AIエージェントが自律的にタスクを実行できます。
 
-## Overview
+- ファイルシステム操作 (読み取り、書き込み、検索)
+- Web検索 (Google Custom Search)
+- Apple Calendar/Reminders連携
+- ターミナルコマンド実行
 
-Kuroko is a native SwiftUI application that brings advanced AI capabilities to your Apple devices. Unlike cloud-dependent alternatives, Kuroko gives you full control over your AI interactions with support for multiple providers, local file system access, and a clean, intuitive interface.
+### ストリーミングレスポンス
+リアルタイムでAIの思考プロセスを表示し、インタラクティブな対話を可能にします。
 
-## Features
+## システムアーキテクチャ
 
-### 🤖 Multi-Provider AI Support
-- **Google Gemini**: Direct integration with Gemini API
-- **OpenRouter**: Access to 100+ AI models including GPT-4, Claude, and more
-- Seamless provider switching
-- Custom system prompts and instructions
+### 主要コンポーネント
 
-### 📁 File System Access
-- Read and write files in user-selected directories
-- Support for text files, code, Markdown, JSON, and more
-- Multiple encoding support (UTF-8, UTF-16, ASCII, ISO Latin-1)
-- Hidden file access (`.gitignore`, `.env`, etc.)
-- Security-scoped bookmarks for persistent access
+1. **AgentRunner**: 状態マシンによる自律制御のコア
+2. **KurokoViewModel**: UI状態管理とビジネスロジック
+3. **LLMサービス**: OpenRouter、AnthropicなどのAPI統合
+4. **ツールシステム**: プラガブルなツールアーキテクチャ
+5. **セッション管理**: 会話履歴の保存と管理
 
-### 🔧 Advanced Tool Calling
-- **Google Search**: Real-time web search integration
-- **File Operations**: List, read, write, and delete files
-- **Extensible**: Easy to add custom tools
+### Plan & Act モードの実装
 
-### 🎨 Beautiful UI
-- Native SwiftUI design for iOS and macOS
-- Dark mode support
-- Multiple themes (Monochrome, Ocean)
-- Platform-specific optimizations
-- Smooth animations and transitions
+```swift
+enum OperationMode {
+    case plan
+    case act
+}
+```
 
-### 💬 Smart Chat Features
-- Streaming responses
-- Message history with session management
-- Stop generation mid-stream
-- Retry failed messages
-- Markdown rendering with syntax highlighting
+Planモードではツール実行が制限され、Actモードでのみ実際の変更が可能になります。
 
-### 🔒 Privacy & Security
-- No telemetry or tracking
-- API keys stored locally
-- Security-scoped file access
-- App Sandbox compliance
-- Full control over your data
+### 状態管理
 
-## Installation
+```swift
+enum AgentState {
+    case idle
+    case awaitingLLM
+    case toolProposed(ToolCallProposal)
+    case awaitingApproval(ToolCallProposal)
+    case executingTool(ToolCallProposal)
+    case completed
+    case failed(String)
+}
+```
 
-### Requirements
-- **iOS**: 17.0 or later
-- **macOS**: 14.0 (Sonoma) or later
-- Xcode 15.0 or later
+## インストール
 
-### Build from Source
+### 必要条件
+- Xcode 15+
+- iOS 17+
+- macOS 14+
 
-1. Clone the repository:
+### ビルド手順
+1. リポジトリをクローン
 ```bash
-git clone https://github.com/yourusername/kuroko.git
+git clone https://github.com/eipiiiii/kuroko.git
 cd kuroko
 ```
 
-2. Open in Xcode:
+2. Xcodeでプロジェクトを開く
 ```bash
 open kuroko.xcodeproj
 ```
 
-3. Configure signing:
-   - Select the `kuroko` target
-   - Go to `Signing & Capabilities`
-   - Select your development team
+3. 依存関係を解決し、ビルド
 
-4. Build and run:
-   - Select your target device/simulator
-   - Press `Cmd + R`
+## 設定
 
-### App Sandbox Configuration
+### API設定
+- OpenRouter APIキーの設定
+- Google Custom Search APIの設定
+- モデル選択
 
-For file system access to work, ensure the following is enabled:
+### ツール設定
+各ツールの有効/無効を個別に設定できます。
 
-**Signing & Capabilities → App Sandbox:**
-- ✅ User Selected File: **Read/Write**
+## 使用方法
 
-## Usage
+### Plan & Act モードの切り替え
+1. 設定画面から"Operation Mode"を選択
+2. PlanモードとActモードを切り替え
 
-### Initial Setup
+### 対話の開始
+1. テキストを入力
+2. AIがPlanモードでタスクを分析
+3. Actモードで実装を実行
 
-1. **Configure API Keys**
-   - Open Settings
-   - Navigate to API Keys
-   - Enter your Gemini or OpenRouter API key
-   - Select your preferred provider
+## アーキテクチャの詳細
 
-2. **Set Up File Access** (Optional)
-   - Go to Settings → Files
-   - Click "Select Folder"
-   - Choose a working directory
-   - Grant access when prompted
+### AgentRunner
+自律制御の中心となるクラス。状態マシンを実装し、LLMとの対話、ツール実行、承認プロセスを管理します。
 
-3. **Customize System Prompt** (Optional)
-   - Settings → Instructions
-   - Add custom instructions for the AI
+### ツールシステム
+プロトコルベースのプラガブルアーキテクチャ。新しいツールを簡単に追加できます。
 
-### Basic Chat
-
-Simply type your question and press send. The AI will respond with streaming text.
-
-### Using Tools
-
-**Search the web:**
-```
-What's the latest news about SwiftUI?
+```swift
+protocol Tool {
+    var name: String { get }
+    var description: String { get }
+    var parameters: [String: Any] { get }
+    func execute(input: [String: Any]) async throws -> String
+}
 ```
 
-**File operations:**
-```
-What files are in my working directory?
-Read the README.md file
-Create a new file called notes.txt with "Hello World"
-```
+### LLM統合
+複数のプロバイダをサポートし、統一されたインターフェースを提供します。
 
-### Advanced Features
+## 開発
 
-**Stop generation:**
-- Click the stop button (🛑) while the AI is responding
-
-**Retry failed messages:**
-- Click the retry button (🔄) when an error occurs
-
-**Switch themes:**
-- Settings → Appearance → Select theme
-
-## Architecture
-
-Kuroko follows a clean, modular architecture:
-
+### プロジェクト構造
 ```
 kuroko/
-├── Models/              # Data structures
-│   ├── MessageModels.swift
-│   ├── SessionModels.swift
-│   ├── ToolModels.swift
-│   └── FileSystemModels.swift
-├── ViewModels/          # UI state management
-│   └── KurokoViewModel.swift
-├── Services/            # Business logic
-│   ├── API/
-│   │   ├── APIConfigurationService.swift
-│   │   ├── GeminiService.swift
-│   │   └── OpenRouterService.swift
-│   ├── FileSystem/
-│   │   ├── FileAccessManager.swift
-│   │   └── FileSystemService.swift
-│   ├── SearchService.swift
-│   └── SessionManager.swift
-├── Views/               # SwiftUI views
-│   ├── Shared/
-│   ├── iOS/
-│   └── macOS/
-├── Managers/
-│   └── ThemeManager.swift
-└── Extensions/
+├── Models/           # データモデル
+├── Services/         # ビジネスロジック
+├── ViewModels/       # UI状態管理
+├── Views/           # SwiftUIビュー
+└── Extensions/      # 拡張機能
 ```
 
-### Key Design Principles
+### テスト
+XCTestを使用したユニットテストとUIテストを実装しています。
 
-- **Dependency Injection**: Services are injected for testability
-- **Protocol-Oriented**: Interfaces defined for all services
-- **Platform Agnostic**: Shared code with platform-specific UI
-- **Observable Pattern**: SwiftUI's `@Observable` for state management
+## ライセンス
 
-## API Providers
+Apache License 2.0
 
-### Google Gemini
+## 貢献
 
-Get your API key: https://makersuite.google.com/app/apikey
+IssueやPull Requestを歓迎します。開発に参加する場合は、まずIssueを作成して議論を始めましょう。
 
-**Supported Models:**
-- gemini-2.0-flash-exp
-- gemini-1.5-pro
-- gemini-1.5-flash
+## 参考
 
-### OpenRouter
-
-Get your API key: https://openrouter.ai/keys
-
-**Access to 100+ models including:**
-- GPT-4, GPT-4 Turbo
-- Claude 3 (Opus, Sonnet, Haiku)
-- Llama 3, Mistral, and more
-
-## Roadmap
-
-- [ ] PDF file support
-- [ ] Image analysis (Vision API)
-- [ ] Voice input/output
-- [ ] iCloud sync for sessions
-- [ ] Custom tool creation
-- [ ] Plugin system
-- [ ] Shortcuts integration
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- Built with [SwiftUI](https://developer.apple.com/xcode/swiftui/)
-- Markdown rendering by [MarkdownUI](https://github.com/gonzalezreal/swift-markdown-ui)
-- Powered by [Google Gemini](https://deepmind.google/technologies/gemini/) and [OpenRouter](https://openrouter.ai/)
-
-## Support
-
-If you encounter any issues or have questions:
-- Open an issue on GitHub
-- Check existing issues for solutions
-
----
-
-<div align="center">
-Made with ❤️ using Swift and SwiftUI
-</div>
+このプロジェクトは、[Cline](https://github.com/cline/cline)の自律制御アーキテクチャをSwiftで再実装したものです。

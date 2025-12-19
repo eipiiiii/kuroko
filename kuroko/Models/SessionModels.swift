@@ -44,7 +44,7 @@ public struct SessionMessage: Identifiable, Codable, Equatable {
 public extension ChatMessage {
     init(from sessionMessage: SessionMessage) {
         self.init(
-            role: MessageRole(rawValue: sessionMessage.role) ?? .model,
+            role: MessageRole(rawValue: sessionMessage.role) ?? .assistant,
             text: sessionMessage.text,
             isStreaming: false
             // Note: Tool call information is not stored in SessionMessage in this design

@@ -26,13 +26,19 @@ public class ToolRegistry {
     private func registerDefaultTools() {
         // Register default tools
         register(tool: GoogleSearchTool(searchService: searchService, configService: configService))
-        
+
         // File System Tools
         register(tool: ListDirectoryTool())
         register(tool: ReadFileTool())
         register(tool: CreateFileTool())
         register(tool: WriteFileTool())
         register(tool: SearchFilesTool())
+
+        // Apple Integration Tools
+        register(tool: AppleCalendarAddTool())
+        register(tool: AppleCalendarGetTool())
+        register(tool: AppleRemindersAddTool())
+        register(tool: AppleRemindersGetTool())
     }
     
     /// Registers a new tool.
@@ -75,6 +81,13 @@ public class ToolRegistry {
     func setToolEnabled(_ name: String, enabled: Bool) {
         if let tool = tool(forName: name) {
             tool.isEnabled = enabled
+        }
+    }
+
+    /// Sets the auto-approval state of a tool
+    func setToolAutoApproval(_ name: String, autoApproval: Bool) {
+        if let tool = tool(forName: name) {
+            tool.autoApproval = autoApproval
         }
     }
 }
