@@ -53,7 +53,8 @@ public class AgentRunner {
         toolCallCount = 0
         threadGrant = false
 
-        await transition(to: .awaitingLLM)
+        // Start with planning phase for complex tasks
+        await transition(to: .planning(nil))
         try await runLoop()
     }
 
@@ -97,6 +98,15 @@ public class AgentRunner {
     private func runLoop() async throws {
         while true {
             switch state {
+            case .planning(let existingPlan):
+                try await generatePlan(existingPlan)
+
+            case .awaitingPlanApproval:
+                return // Wait for user approval
+
+            case .executingPlan(let plan, let currentStep):
+                try await executePlanStep(plan, stepIndex: currentStep)
+
             case .awaitingLLM:
                 try await callLLM()
 
@@ -112,6 +122,9 @@ public class AgentRunner {
             case .executingTool(let proposal):
                 try await executeTool(proposal)
                 // Continue loop to .awaitingLLM case
+
+            case .reflecting(let result):
+                try await reflectOnExecution(result)
 
             case .completed, .failed, .awaitingApproval:
                 return // Final states, exit loop
@@ -497,4 +510,216 @@ public class AgentRunner {
         state = newState
         onStateChange?(newState)
     }
+
+    // MARK: - Plan-Act Architecture Methods
+
+    /// Generates a task execution plan using LLM
+    private func generatePlan(_ existingPlan: TaskPlan?) async throws {
+        print("[PLAN] Generating execution plan...")
+
+        // Get the last user message
+        guard let userMessage = messages.last(where: { $0.role == .user }) else {
+            throw AgentError.noUserMessage
+        }
+
+        let planPrompt = """
+以下のタスクを実行するための計画を作成してください：
+
+タスク: \(userMessage.text)
+
+利用可能なツール:
+- FileSystemTools: ファイル操作（読み取り、書き込み、検索）
+- AppleCalendarTool: カレンダー操作
+- AppleRemindersTool: リマインダー操作
+- GoogleSearchTool: ウェブ検索
+
+計画の形式（JSON）:
+{
+  "steps": [
+    {
+      "description": "ステップの説明",
+      "toolsRequired": ["使用するツール名"],
+      "expectedOutcome": "期待される結果",
+      "dependencies": ["依存する他のステップのID"],
+      "estimatedDuration": 所要時間（秒）
+    }
+  ],
+  "estimatedDuration": 全体の所要時間,
+  "riskAssessment": "low|medium|high|critical"
+}
+
+シンプルなタスクの場合は直接実行し、複雑なタスクのみ計画を作成してください。
+"""
+
+        let config = LLMConfig(model: KurokoConfigurationService.shared.selectedModel)
+        var planResponse = ""
+
+        try await llmService.sendMessage(
+            message: planPrompt,
+            history: messages.dropLast(), // Exclude current planning context
+            config: config,
+            onChunk: { chunk in
+                planResponse += chunk
+            },
+            onToolCall: { _ in } // Ignore tool calls during planning
+        )
+
+        // Parse the plan from LLM response
+        if let plan = parseTaskPlan(from: planResponse) {
+            print("[PLAN] Plan generated with \(plan.steps.count) steps")
+            await transition(to: .awaitingPlanApproval(plan))
+        } else {
+            // If plan parsing fails, fall back to direct execution
+            print("[PLAN] Plan parsing failed, falling back to direct execution")
+            await transition(to: .awaitingLLM)
+        }
+    }
+
+    /// Executes a specific step in the task plan
+    private func executePlanStep(_ plan: TaskPlan, stepIndex: Int) async throws {
+        guard stepIndex < plan.steps.count else {
+            // All steps completed, move to reflection
+            let executionResult = createExecutionResult(from: plan)
+            await transition(to: .reflecting(executionResult))
+            return
+        }
+
+        let step = plan.steps[stepIndex]
+        print("[PLAN] Executing step \(stepIndex + 1)/\(plan.steps.count): \(step.description)")
+
+        // Add step execution message
+        let stepMessage = ChatMessage(
+            role: .assistant,
+            text: "ステップ \(stepIndex + 1): \(step.description)"
+        )
+        messages.append(stepMessage)
+        onMessageAdded?(stepMessage)
+
+        // For now, delegate to LLM for step execution
+        // In future phases, this could be more sophisticated
+        await transition(to: .awaitingLLM)
+
+        // Note: After LLM processes this step, it should transition back to executingPlan
+        // with incremented step index. This logic will be implemented in callLLM method.
+    }
+
+    /// Performs reflection on task execution
+    private func reflectOnExecution(_ result: ExecutionResult) async throws {
+        print("[REFLECT] Analyzing execution result...")
+
+        let reflectionPrompt = """
+以下のタスク実行を振り返り、改善点を分析してください：
+
+タスク: \(result.originalTask)
+実行時間: \(result.duration)秒
+成功: \(result.success)
+
+実行ステップ:
+\(result.steps.enumerated().map { "ステップ \($0.offset + 1): \($0.element.description)" }.joined(separator: "\n"))
+
+改善点を以下の観点から分析してください：
+1. 効率性: より良い方法はあったか
+2. 完全性: 必要なステップがすべて実行されたか
+3. 安全性: リスクは適切に管理されたか
+4. 学習点: 次回同様のタスクで活かせること
+
+分析結果を簡潔にまとめてください。
+"""
+
+        let config = LLMConfig(model: KurokoConfigurationService.shared.selectedModel)
+        var reflectionResponse = ""
+
+        try await llmService.sendMessage(
+            message: reflectionPrompt,
+            history: messages,
+            config: config,
+            onChunk: { chunk in
+                reflectionResponse += chunk
+            },
+            onToolCall: { _ in }
+        )
+
+        // Add reflection result to conversation
+        let reflectionMessage = ChatMessage(
+            role: .assistant,
+            text: "実行の振り返り:\n\(reflectionResponse)"
+        )
+        messages.append(reflectionMessage)
+        onMessageAdded?(reflectionMessage)
+
+        // Complete the task
+        await transition(to: .completed)
+    }
+
+    // MARK: - Helper Methods
+
+    /// Parses task plan from LLM response
+    private func parseTaskPlan(from response: String) -> TaskPlan? {
+        // Try to extract JSON from response
+        guard let jsonStart = response.firstIndex(of: "{"),
+              let jsonEnd = response.lastIndex(of: "}"),
+              jsonStart < jsonEnd else {
+            return nil
+        }
+
+        let jsonString = String(response[jsonStart...jsonEnd])
+        guard let data = jsonString.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+
+        // Parse steps
+        guard let stepsJson = json["steps"] as? [[String: Any]] else { return nil }
+
+        let steps = stepsJson.compactMap { stepJson -> PlanStep? in
+            guard let description = stepJson["description"] as? String else { return nil }
+            let toolsRequired = stepJson["toolsRequired"] as? [String] ?? []
+            let expectedOutcome = stepJson["expectedOutcome"] as? String ?? ""
+            let dependencies = (stepJson["dependencies"] as? [String])?.compactMap { UUID(uuidString: $0) } ?? []
+            let estimatedDuration = stepJson["estimatedDuration"] as? TimeInterval ?? 0
+
+            return PlanStep(
+                description: description,
+                toolsRequired: toolsRequired,
+                expectedOutcome: expectedOutcome,
+                dependencies: dependencies,
+                estimatedDuration: estimatedDuration
+            )
+        }
+
+        let estimatedDuration = json["estimatedDuration"] as? TimeInterval ?? 0
+        let riskAssessmentString = json["riskAssessment"] as? String ?? "medium"
+        let riskAssessment = RiskLevel(rawValue: riskAssessmentString) ?? .medium
+
+        return TaskPlan(steps: steps, estimatedDuration: estimatedDuration, riskAssessment: riskAssessment)
+    }
+
+    /// Creates execution result from completed plan
+    private func createExecutionResult(from plan: TaskPlan) -> ExecutionResult {
+        // Get the original task
+        let originalTask = messages.first(where: { $0.role == .user })?.text ?? "Unknown task"
+
+        // Create execution steps from plan steps (simplified)
+        let executionSteps = plan.steps.map { step in
+            ExecutionStep(
+                description: step.description,
+                success: true, // Assume success for now
+                duration: step.estimatedDuration
+            )
+        }
+
+        return ExecutionResult(
+            originalTask: originalTask,
+            steps: executionSteps,
+            success: true,
+            duration: plan.estimatedDuration
+        )
+    }
+}
+
+// MARK: - Errors
+enum AgentError: Error {
+    case noUserMessage
+    case invalidPlanFormat
+    case planExecutionFailed
 }

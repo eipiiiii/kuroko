@@ -1,7 +1,7 @@
 # Kuroko 🤖
 
 [![Swift](https://img.shields.io/badge/Swift-5.9+-orange.svg)](https://swift.org)
-[![iOS](https://img.shields.io/badge/iOS-17+-blue.svg)](https://developer.apple.com/ios/)
+[![iOS](https://img.shields.io/badge/iOS-26+-blue.svg)](https://developer.apple.com/ios/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 
 Kurokoは、Clineの自律制御アーキテクチャをSwiftで実装したAIエージェントアプリケーションです。Actモードを採用し、LLMとの対話を通じて自律的にタスクを実行します。
@@ -84,7 +84,7 @@ enum AgentState {
 
 ### 必要条件
 - Xcode 15+
-- iOS 17+
+- iOS 26+
 
 ### ビルド手順
 1. リポジトリをクローン
@@ -251,15 +251,105 @@ protocol Tool {
 ### プロジェクト構造
 ```
 kuroko/
-├── Models/           # データモデル
-├── Services/         # ビジネスロジック
-├── ViewModels/       # UI状態管理
-├── Views/           # SwiftUIビュー
-└── Extensions/      # 拡張機能
+├── App/                    # アプリのエントリーポイント
+│   └── kurokoApp.swift     # メインアプリ構造体
+├── Models/                 # データモデル
+│   ├── AgentModels.swift   # エージェント関連モデル
+│   ├── FileSystemModels.swift  # ファイルシステム関連モデル
+│   └── SessionModels.swift # セッションデータモデル
+├── Services/               # ビジネスロジックと外部サービス連携
+│   ├── API/                # APIサービス
+│   │   └── OpenRouterAPIService.swift
+│   ├── AgentMemoryService.swift  # エージェントメモリ管理
+│   ├── AgentRunner.swift   # エージェント実行エンジン
+│   ├── FileSystem/         # ファイルシステムサービス
+│   │   └── FileAccessManager.swift
+│   ├── KurokoConfigurationService.swift  # 設定管理
+│   ├── LLM/                # LLM関連サービス
+│   │   ├── Core/           # コアLLMインターフェース
+│   │   │   ├── LLMModels.swift
+│   │   │   ├── LLMProvider.swift
+│   │   │   ├── LLMService.swift
+│   │   │   └── UnsupportedLLMService.swift
+│   │   ├── Factory/        # LLMサービスファクトリ
+│   │   │   └── LLMServiceFactory.swift
+│   │   └── Providers/      # 各プロバイダの実装
+│   │       └── OpenRouterLLMService.swift
+│   ├── ReflectionService.swift  # リフレクションサービス
+│   ├── SearchService.swift  # 検索サービス
+│   ├── SessionManager.swift # セッション管理
+│   └── Tools/              # ツールシステム
+│       ├── Core/           # ツール基盤
+│       │   ├── DefaultToolExecutor.swift
+│       │   ├── ToolErrors.swift
+│       │   └── Tooling.swift
+│       ├── Implementations/# 各ツールの実装
+│       │   ├── Apple/      # Apple統合ツール
+│       │   │   ├── AppleCalendarTool.swift
+│       │   │   └── AppleRemindersTool.swift
+│       │   ├── FileSystem/ # ファイルシステムツール
+│       │   │   └── FileSystemTools.swift
+│       │   └── Web/        # Web検索ツール
+│       │       └── GoogleSearchTool.swift
+│       └── Registry/       # ツールレジストリ
+│           └── ToolRegistry.swift
+├── ViewModels/             # UI状態管理
+│   └── KurokoViewModel.swift  # メインViewModel
+├── Views/                  # SwiftUIビュー
+│   ├── FileAccessSettingsView.swift
+│   ├── IOSContentView.swift
+│   ├── SessionHistoryView.swift
+│   ├── SettingsView.swift  # 設定ビュー
+│   └── Shared/             # 共有ビューコンポーネント
+│       ├── ActionButton.swift
+│       ├── ChatView.swift
+│       ├── InputArea.swift
+│       └── MessageBubble.swift
+├── Managers/               # マネージャークラス
+│   └── ThemeManager.swift  # テーマ管理
+├── Extensions/             # Swift拡張機能
+│   ├── ColorExtensions.swift
+│   └── ViewExtensions.swift
+└── Assets.xcassets/        # アセットファイル
+
+.agent/                     # エージェント作業管理ディレクトリ
+├── task.md                 # 現在のタスクチェックリスト
+├── implementation_plan.md  # 実装計画
+├── rules.md                # プロジェクト固有ルール
+└── walkthrough_YYYYMMDD_HHMM_feature-name.md  # 作業完了サマリ
+
+kuroko.xcodeproj/           # Xcodeプロジェクトファイル
+kurokoTests/                # ユニットテスト
+kurokoUITests/              # UIテスト
 ```
 
 ### テスト
 XCTestを使用したユニットテストとUIテストを実装しています。
+
+#### ユニットテストの実行
+```bash
+# Xcodeでテストを実行
+xcodebuild test -scheme kuroko -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.0'
+
+# またはXcodeのProduct > Testメニューから実行
+```
+
+#### UIテストの実行
+```bash
+# XcodeでUIテストを実行
+xcodebuild test -scheme kurokoUITests -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.0'
+
+# またはXcodeのProduct > Testメニューから実行
+```
+
+#### テストカバレッジの確認
+```bash
+# テスト実行時にカバレッジを収集
+xcodebuild test -scheme kuroko -enableCodeCoverage YES -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.0'
+```
+
+#### 継続的インテグレーション
+GitHub Actionsを使用して自動テストを実行しています。プルリクエスト作成時にテストが自動実行されます。
 
 ## 🔧 トラブルシューティング
 
