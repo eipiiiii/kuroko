@@ -243,7 +243,7 @@ struct SystemPromptSettingsView: View {
             Section {
                 DisclosureGroup("View System Instructions", isExpanded: $showSystemInstructions) {
                     ScrollView {
-                        Text(KurokoConfigurationService.FIXED_SYSTEM_PROMPT)
+                        Text(configService.loadSystemPrompt())
                             .font(.system(.body, design: .monospaced))
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)

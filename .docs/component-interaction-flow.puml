@@ -1,0 +1,112 @@
+@startuml Component Interaction Flow
+
+title コンポーネント間相互作用フロー図
+
+' コンポーネント定義
+package "Presentation Layer" as PL {
+    [KurokoViewModel] as VM
+    [ChatView] as CV
+    [InputArea] as IA
+    [MessageBubble] as MB
+    [ToolResultView] as TRV
+}
+
+package "Business Logic Layer" as BLL {
+    [AgentRunner] as AR
+    [SessionManager] as SM
+    [KurokoConfigurationService] as KS
+}
+
+package "Service Layer" as SL {
+    [OpenRouterLLMService] as LLM
+    [DefaultToolExecutor] as TE
+    [ToolRegistry] as TR
+}
+
+package "Tool Layer" as TL {
+    [FileSystemTools] as FST
+    [AppleCalendarTool] as ACT
+    [AppleRemindersTool] as ART
+    [GoogleSearchTool] as GST
+}
+
+package "Data Access Layer" as DAL {
+    [FileAccessManager] as FAM
+    [SearchService] as SS
+}
+
+' 初期化フロー
+KS -> VM : inject config
+VM -> SM : inject sessionManager
+VM -> TE : inject toolExecutor
+TE -> TR : inject toolRegistry
+
+' ユーザー入力フロー
+CV -> VM : user input text
+VM -> AR : startWithHistory(messages)
+AR -> LLM : sendMessage()
+
+' LLM処理フロー
+LLM -> "OpenRouter API" : HTTP POST
+"OpenRouter API" --> LLM : streaming response
+LLM -> AR : onChunk() / onToolCall()
+
+' ツール実行フロー
+AR -> TE : executeToolCall()
+TE -> TR : get tool instance
+TR -> TE : return tool
+TE -> FST : execute()
+TE -> ACT : execute()
+TE -> ART : execute()
+TE -> GST : execute()
+
+' ツール実装依存関係
+FST -> FAM : file operations
+ACT -> "EventKit" : calendar access
+ART -> "EventKit" : reminders access
+GST -> SS : search requests
+SS -> "Google Search API" : web search
+
+' データ永続化フロー
+VM -> SM : saveCurrentSession()
+SM -> "UserDefaults/File" : persist session data
+KS -> "UserDefaults" : persist configuration
+
+' UI更新フロー
+AR -> VM : onMessageAdded()
+AR -> VM : onStateChange()
+VM -> CV : update messages
+VM -> CV : update viewState
+CV -> MB : render message
+CV -> TRV : render tool result
+
+' エラーハンドリングフロー
+LLM -> AR : throw error -> VM : error state -> CV : show error
+TE -> AR : throw ToolError -> VM : error state -> CV : show error
+FAM -> FST : access denied -> TE : ToolError -> AR : error state
+"EventKit" -> ACT : permission denied -> TE : ToolError -> AR : error state
+
+' 設定変更フロー
+CV -> KS : configuration change
+KS -> VM : updateModelConfiguration()
+VM -> AR : reset agentRunner
+VM -> LLM : new service instance
+
+' セッション管理フロー
+CV -> VM : startNewSession()
+VM -> AR : reset agentRunner
+VM -> SM : createNewSession()
+
+' メモリ管理フロー
+VM -> AR : agentRunner (strong reference)
+AR -> LLM : llmService (strong reference)
+AR -> TE : toolExecutor (strong reference)
+LLM -> KS : configService (weak reference)
+
+note right of AR : AgentRunnerは状態管理の中心\n複数の状態遷移を制御
+
+note bottom of TR : ToolRegistryは全ツールの\n登録・管理を担当
+
+note bottom of KS : ConfigurationServiceは\n設定の一元管理を行う
+
+@enduml

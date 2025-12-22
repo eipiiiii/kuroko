@@ -16,7 +16,7 @@ public enum AgentState {
     case awaitingLLM
     case toolProposed(ToolCallProposal)
     case awaitingApproval(ToolCallProposal)
-    case executingTool(ToolCallProposal)
+    case executingTool(ToolCallProposal) // 実行状態を追加
     case reflecting(ExecutionResult) // 実行結果の振り返り
     case completed
     case failed(String) // Store error message instead of Error
@@ -107,6 +107,88 @@ public enum RiskLevel: String, Codable {
     case critical
 }
 
+// MARK: - Tool Execution State Models
+
+/// Represents the execution phase of a tool
+public enum ToolExecutionPhase: String, Codable {
+    case starting
+    case executing
+    case processingResult
+    case completed
+    case failed
+}
+
+/// Represents the type of tool being executed
+public enum ToolType: String, Codable {
+    case fileOperation
+    case search
+    case codeExecution
+    case web
+    case other
+}
+
+/// Represents detailed execution state of a tool
+public struct ToolExecutionState: Identifiable, Codable {
+    public let id: UUID
+    public let toolName: String
+    public let toolType: ToolType
+    public var phase: ToolExecutionPhase
+    public var progress: Double
+    public var currentStep: String?
+    public var estimatedTimeRemaining: TimeInterval?
+    public var startedAt: Date
+    public var finishedAt: Date?
+    public var metadata: [String: String]  // filePath, searchQuery, command など
+    public var error: ToolErrorInfo?
+
+    public init(
+        id: UUID = UUID(),
+        toolName: String,
+        toolType: ToolType,
+        phase: ToolExecutionPhase = .starting,
+        progress: Double = 0.0,
+        currentStep: String? = nil,
+        estimatedTimeRemaining: TimeInterval? = nil,
+        startedAt: Date = Date(),
+        finishedAt: Date? = nil,
+        metadata: [String: String] = [:],
+        error: ToolErrorInfo? = nil
+    ) {
+        self.id = id
+        self.toolName = toolName
+        self.toolType = toolType
+        self.phase = phase
+        self.progress = progress
+        self.currentStep = currentStep
+        self.estimatedTimeRemaining = estimatedTimeRemaining
+        self.startedAt = startedAt
+        self.finishedAt = finishedAt
+        self.metadata = metadata
+        self.error = error
+    }
+
+    /// Calculates execution duration
+    public var executionDuration: TimeInterval? {
+        guard let finishedAt = finishedAt else { return nil }
+        return finishedAt.timeIntervalSince(startedAt)
+    }
+}
+
+/// Represents error information for tool execution
+public struct ToolErrorInfo: Codable {
+    public let message: String
+    public let code: String?
+    public let category: String?  // network, validation, execution, timeout など
+    public let debugDetails: String?
+
+    public init(message: String, code: String? = nil, category: String? = nil, debugDetails: String? = nil) {
+        self.message = message
+        self.code = code
+        self.category = category
+        self.debugDetails = debugDetails
+    }
+}
+
 /// Represents the result of a task execution.
 public struct ExecutionResult: Codable {
     public let originalTask: String
@@ -143,4 +225,70 @@ public struct ExecutionStep: Codable {
         self.output = output
         self.error = error
     }
+}
+
+// MARK: - Tool Result Models
+
+/// Represents the result of any tool execution
+public enum AnyToolResult {
+    case fileOperation(FileOperationUIResult)
+    case search(SearchResult)
+    case codeExecution(CodeExecutionResult)
+    case raw(String)
+}
+
+/// File operation result for UI display
+public struct FileOperationUIResult: Codable {
+    public let operation: FileOperationUIType
+    public let filePath: String?
+    public let content: String?
+    public let diff: DiffModel?
+
+    public enum FileOperationUIType: String, Codable {
+        case read
+        case write
+        case edit
+        case delete
+        case list
+    }
+}
+
+/// Diff model for file changes
+public struct DiffModel: Codable {
+    public let filePath: String
+    public let hunks: [DiffHunk]
+
+    public struct DiffHunk: Codable, Hashable {
+        public let oldStart: Int
+        public let oldLines: Int
+        public let newStart: Int
+        public let newLines: Int
+        public let lines: [String]
+    }
+}
+
+/// Search result
+public struct SearchResult: Codable {
+    public let query: String
+    public let matches: [SearchMatch]
+
+    public struct SearchMatch: Codable {
+        public let fileOrUrl: String
+        public let lineNumber: Int?
+        public let text: String
+        public let ranges: [RangeInfo]
+
+        public struct RangeInfo: Codable {
+            public let start: Int
+            public let end: Int
+        }
+    }
+}
+
+/// Code execution result
+public struct CodeExecutionResult: Codable {
+    public let command: String
+    public let stdout: String
+    public let stderr: String
+    public let exitCode: Int
 }

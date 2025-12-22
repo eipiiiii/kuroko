@@ -1,0 +1,100 @@
+@startuml User Input to Output Processing Sequence
+
+title ユーザー入力から出力までの処理シーケンス図
+
+actor User as U
+participant KurokoViewModel as VM
+participant AgentRunner as AR
+participant OpenRouterLLMService as LLM
+participant DefaultToolExecutor as TE
+participant ToolRegistry as TR
+database SessionManager as SM
+
+== 初期化フェーズ ==
+U -> VM: アプリ起動
+VM -> VM: init()
+VM -> AR: AgentRunner初期化
+AR -> AR: AgentRunner(config, llmService, toolExecutor, systemPrompt)
+
+== ユーザー入力処理 ==
+U -> VM: sendMessage(text)
+VM -> VM: inputText = ""
+VM -> VM: viewState = loading
+VM -> VM: messages.append(userMessage)
+
+VM -> AR: startWithHistory(messages)
+AR -> AR: messages = [systemPrompt] + history
+AR -> AR: toolCallCount = 0
+AR -> AR: state = awaitingLLM
+
+== LLM問い合わせフェーズ ==
+AR -> LLM: sendMessage(message, history, config)
+LLM -> LLM: HTTP POST to OpenRouter API
+LLM -> OpenRouterAPI: HTTP Request
+OpenRouterAPI --> LLM: Streaming Response Start
+
+== 通常応答フロー ==
+LLM --> AR: onChunk(text) [loop]
+AR --> VM: onMessageAdded(assistantMessage)
+VM --> U: UI更新（ストリーミング表示）
+
+OpenRouterAPI --> LLM: response complete
+LLM --> AR: streaming complete
+AR -> AR: parseUserFriendlyResponse()
+AR -> AR: state = completed
+AR --> VM: onStateChange(idle)
+VM -> VM: viewState = idle
+VM -> SM: saveCurrentSession()
+
+== ツール実行フロー ==
+note right: 並行して実行される場合
+OpenRouterAPI --> LLM: tool_calls in response
+LLM --> AR: onToolCall(toolCall)
+AR -> AR: parseToolCallProposal()
+AR -> AR: state = toolProposed
+
+alt 自動承認ツール
+    AR -> AR: needsApproval() -> false
+    AR -> AR: state = executingTool
+    AR -> TE: executeToolCall(toolCall)
+    TE -> TR: toolRegistry.tool(forName)
+    TR --> TE: Tool instance
+    TE -> TE: tool.execute(arguments)
+    TE --> AR: result
+
+    AR -> AR: messages.append(toolResultMessage)
+    AR -> AR: state = awaitingLLM
+    note right: LLM再問い合わせへループ
+else 手動承認ツール
+    AR -> AR: needsApproval() -> true
+    AR -> AR: state = awaitingApproval
+    AR --> VM: onStateChange(awaitingApproval)
+    VM -> VM: viewState = awaitingApproval
+    VM --> U: 承認ダイアログ表示
+
+    U -> VM: approveToolCall()
+    VM -> AR: approveToolCall()
+    AR -> AR: state = executingTool
+end
+
+== エラー処理 ==
+alt APIエラー発生
+    OpenRouterAPI --> LLM: HTTP Error
+    LLM --> AR: throw error
+    AR -> AR: state = failed
+    AR --> VM: onStateChange(error)
+    VM -> VM: viewState = error
+    VM --> U: エラーメッセージ表示
+else ツール実行エラー
+    TE --> AR: throw ToolError
+    AR -> AR: state = failed
+    AR --> VM: onStateChange(error)
+    VM -> VM: viewState = error
+end
+
+== 完了処理 ==
+AR --> VM: 処理完了
+VM -> SM: saveCurrentSession()
+VM --> U: 最終応答表示
+
+@enduml

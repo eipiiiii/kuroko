@@ -38,62 +38,82 @@ public class KurokoConfigurationService {
     private let openRouterAPIService = OpenRouterAPIService()
     private let modelsCacheKey = "openRouterModelsCache"
 
-    // MARK: - Fixed System Instructions
-    public static let FIXED_SYSTEM_PROMPT = """
-あなたは自律的な汎用エージェントである。
+    // MARK: - System Prompt Management
 
-## 存在目的
-ユーザーの課題を解決し、目標達成を支援すること。
+    /// Load system prompt from file
+    public func loadSystemPrompt() -> String {
+        guard let url = Bundle.main.url(forResource: "SystemPrompt", withExtension: "md") else {
+            print("[CONFIG] SystemPrompt.md not found in bundle, using fallback")
+            return getFallbackSystemPrompt()
+        }
 
-## 行動原則
-1. 完全性を追求せよ：解決に必要な情報が揃うまで収集を続けよ
-2. 効率を最適化せよ：最小の労力で最大の効果を求めよ
-3. 安全性を確保せよ：破壊的な行動を避け、常に安全策を選択せよ
-4. 透明性を維持せよ：判断プロセスと決定根拠を説明せよ
+        do {
+            let content = try String(contentsOf: url, encoding: .utf8)
+            return content
+        } catch {
+            print("[CONFIG] Failed to load SystemPrompt.md: \(error.localizedDescription), using fallback")
+            return getFallbackSystemPrompt()
+        }
+    }
 
-## 責任の所在
-- 課題解決の主導権を担う
-- 必要に応じて情報を収集し、判断を下す
-- 実行可能な解決策を提示し、実装する
-- リスクを評価し、適切な対策を講じる
+    /// Fallback system prompt in case file loading fails
+    private func getFallbackSystemPrompt() -> String {
+        return """
+        あなたは自律的な汎用エージェントである。
 
-## 制約条件
-- 許可されていない領域に踏み込まない
-- システムの安定性を損なう操作を避ける
-- ユーザーのプライバシーとセキュリティを尊重する
-- 倫理的・法的制約を守る
+        ## 存在目的
+        ユーザーの課題を解決し、目標達成を支援すること。
 
-## 現在の情報
-- 現在の日時: [DYNAMIC_TIMESTAMP]
-- タイムゾーン: [TIMEZONE_INFO]
+        ## 行動原則
+        1. 完全性を追求せよ：解決に必要な情報が揃うまで収集を続けよ
+        2. 効率を最適化せよ：最小の労力で最大の効果を求めよ
+        3. 安全性を確保せよ：破壊的な行動を避け、常に安全策を選択せよ
+        4. 透明性を維持せよ：判断プロセスと決定根拠を説明せよ
 
-## 応答原則
-- 解決に至るまで思考を続けよ
-- 必要に応じてツールを使用せよ
-- 最終的な解決策を提示せよ
-- 実行過程を透明に説明せよ
+        ## 責任の所在
+        - 課題解決の主導権を担う
+        - 必要に応じて情報を収集し、判断を下す
+        - 実行可能な解決策を提示し、実装する
+        - リスクを評価し、適切な対策を講じる
 
-## コミュニケーション
-- ユーザー向け最終回答は<response>タグで囲む
-- 内部思考プロセスは<thinking>タグで囲む
-- ツール使用時は以下のJSON形式を使用（完全なJSONオブジェクトとして出力）：
+        ## 制約条件
+        - 許可されていない領域に踏み込まない
+        - システムの安定性を損なう操作を避ける
+        - ユーザーのプライバシーとセキュリティを尊重する
+        - 倫理的・法的制約を守る
 
-```json
-{
-  "type": "tool_call",
-  "tool_id": "ツール名",
-  "input": {
-    "パラメータ名": "値"
-  }
-}
-```
+        ## 現在の情報
+        - 現在の日時: [DYNAMIC_TIMESTAMP]
+        - タイムゾーン: [TIMEZONE_INFO]
 
-**重要**: ツールを呼び出す場合は、上記のJSON形式をレスポンスのどこかに含めてください。XMLタグや他の形式は使用しないでください。
+        ## 応答原則
+        - 解決に至るまで思考を続けよ
+        - 必要に応じてツールを使用せよ
+        - 最終的な解決策を提示せよ
+        - 実行過程を透明に説明せよ
 
-AVAILABLE TOOLS (INJECTED AT RUNTIME)
+        ## コミュニケーション
+        - ユーザー向け最終回答は<response>タグで囲む
+        - 内部思考プロセスは<thinking>タグで囲む
+        - ツール使用時は以下のJSON形式を使用（完全なJSONオブジェクトとして出力）：
 
-[DYNAMIC_TOOLS]
-"""
+        ```json
+        {
+          "type": "tool_call",
+          "tool_id": "ツール名",
+          "input": {
+            "パラメータ名": "値"
+          }
+        }
+        ```
+
+        **重要**: ツールを呼び出す場合は、上記のJSON形式をレスポンスのどこかに含めてください。XMLタグや他の形式は使用しないでください。
+
+        AVAILABLE TOOLS (INJECTED AT RUNTIME)
+
+        [DYNAMIC_TOOLS]
+        """
+    }
 
     // MARK: - Initialization
     private init() {
@@ -187,7 +207,8 @@ AVAILABLE TOOLS (INJECTED AT RUNTIME)
     public func getCombinedPrompt() -> String {
         let timestamp = getCurrentTimestampInTimezone()
         let timezoneInfo = getTimezoneDisplayName()
-        let promptWithTimestamp = Self.FIXED_SYSTEM_PROMPT
+        let systemPrompt = loadSystemPrompt()
+        let promptWithTimestamp = systemPrompt
             .replacingOccurrences(of: "[DYNAMIC_TIMESTAMP]", with: timestamp)
             .replacingOccurrences(of: "[TIMEZONE_INFO]", with: timezoneInfo)
 

@@ -312,18 +312,71 @@ public class AgentRunner {
         return json
     }
 
-    /// Parses the LLM response to extract user-friendly text, removing internal reasoning/thinking content.
+    /// Parses the LLM response to extract user-friendly text and preserve thinking process in conversation history.
     private func parseUserFriendlyResponse(from text: String) -> String {
+        var remainingText = text
+
+        // Extract and preserve thinking process
+        if let thinkingStart = remainingText.range(of: "<thinking>"),
+           let thinkingEnd = remainingText.range(of: "</thinking>", range: thinkingStart.upperBound..<remainingText.endIndex) {
+            let thinkingContent = remainingText[thinkingStart.upperBound..<thinkingEnd.lowerBound]
+
+            // Add thinking as a separate assistant message
+            let thinkingMessage = ChatMessage(
+                role: .assistant,
+                text: "**思考プロセス:**\n\(String(thinkingContent).trimmingCharacters(in: .whitespacesAndNewlines))"
+            )
+            messages.append(thinkingMessage)
+            onMessageAdded?(thinkingMessage)
+
+            // Remove thinking section from remaining text
+            remainingText.removeSubrange(thinkingStart.lowerBound..<thinkingEnd.upperBound)
+        }
+
+        // Extract and preserve observation process
+        if let observationStart = remainingText.range(of: "<observation>"),
+           let observationEnd = remainingText.range(of: "</observation>", range: observationStart.upperBound..<remainingText.endIndex) {
+            let observationContent = remainingText[observationStart.upperBound..<observationEnd.lowerBound]
+
+            // Add observation as a separate assistant message
+            let observationMessage = ChatMessage(
+                role: .assistant,
+                text: "**分析結果:**\n\(String(observationContent).trimmingCharacters(in: .whitespacesAndNewlines))"
+            )
+            messages.append(observationMessage)
+            onMessageAdded?(observationMessage)
+
+            // Remove observation section from remaining text
+            remainingText.removeSubrange(observationStart.lowerBound..<observationEnd.upperBound)
+        }
+
+        // Extract and preserve reflection process
+        if let reflectionStart = remainingText.range(of: "<reflection>"),
+           let reflectionEnd = remainingText.range(of: "</reflection>", range: reflectionStart.upperBound..<remainingText.endIndex) {
+            let reflectionContent = remainingText[reflectionStart.upperBound..<reflectionEnd.lowerBound]
+
+            // Add reflection as a separate assistant message
+            let reflectionMessage = ChatMessage(
+                role: .assistant,
+                text: "**振り返り:**\n\(String(reflectionContent).trimmingCharacters(in: .whitespacesAndNewlines))"
+            )
+            messages.append(reflectionMessage)
+            onMessageAdded?(reflectionMessage)
+
+            // Remove reflection section from remaining text
+            remainingText.removeSubrange(reflectionStart.lowerBound..<reflectionEnd.upperBound)
+        }
+
         // First, check if the response contains <response> tags
-        if let responseStart = text.range(of: "<response>"),
-           let responseEnd = text.range(of: "</response>", range: responseStart.upperBound..<text.endIndex) {
+        if let responseStart = remainingText.range(of: "<response>"),
+           let responseEnd = remainingText.range(of: "</response>", range: responseStart.upperBound..<remainingText.endIndex) {
             // Extract content between <response> tags
-            let responseContent = text[responseStart.upperBound..<responseEnd.lowerBound]
+            let responseContent = remainingText[responseStart.upperBound..<responseEnd.lowerBound]
             return String(responseContent).trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
         // If no <response> tags found, try to parse as JSON (structured response format)
-        if let data = text.data(using: .utf8),
+        if let data = remainingText.data(using: .utf8),
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
 
             // Check if this is a tool call response - in that case, don't show the JSON
@@ -348,35 +401,29 @@ public class AgentRunner {
         }
 
         // If not JSON or no structured fields found, try to extract text before any JSON
-        if let jsonStart = text.firstIndex(of: "{"), jsonStart != text.startIndex {
-            let beforeJson = text[..<jsonStart].trimmingCharacters(in: .whitespacesAndNewlines)
+        if let jsonStart = remainingText.firstIndex(of: "{"), jsonStart != remainingText.startIndex {
+            let beforeJson = remainingText[..<jsonStart].trimmingCharacters(in: .whitespacesAndNewlines)
             if !beforeJson.isEmpty {
                 return beforeJson
             }
         }
 
-        // If no structured response found, try to remove common thinking patterns
-        var cleanedText = text
+        // If no structured response found, try to remove common thinking patterns (legacy support)
+        var cleanedText = remainingText
 
-        // Remove content between <thinking> tags
-        if let thinkingStart = cleanedText.range(of: "<thinking>"),
-           let thinkingEnd = cleanedText.range(of: "</thinking>", range: thinkingStart.upperBound..<cleanedText.endIndex) {
-            cleanedText.removeSubrange(thinkingStart.lowerBound..<thinkingEnd.upperBound)
-        }
-
-        // Remove content between ```thinking blocks
+        // Remove content between ```thinking blocks (legacy)
         if let thinkingBlockStart = cleanedText.range(of: "```thinking"),
            let thinkingBlockEnd = cleanedText.range(of: "```", range: thinkingBlockStart.upperBound..<cleanedText.endIndex) {
             cleanedText.removeSubrange(thinkingBlockStart.lowerBound..<thinkingBlockEnd.upperBound)
         }
 
-        // Remove content between <IMPORTANT> tags
+        // Remove content between <IMPORTANT> tags (legacy)
         if let importantStart = cleanedText.range(of: "<IMPORTANT>"),
            let importantEnd = cleanedText.range(of: "</IMPORTANT>", range: importantStart.upperBound..<cleanedText.endIndex) {
             cleanedText.removeSubrange(importantStart.lowerBound..<importantEnd.upperBound)
         }
 
-        // Remove lines that start with specific internal markers
+        // Remove lines that start with specific internal markers (legacy)
         let lines = cleanedText.components(separatedBy: .newlines)
         let filteredLines = lines.filter { line in
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)

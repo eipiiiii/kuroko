@@ -57,8 +57,8 @@ public class AgentMemoryService {
     }
 
     /// Searches long-term memory for relevant entries
-    public func searchLongTermMemory(query: String, maxResults: Int = 5) async throws -> [MemoryEntry] {
-        return try await longTermMemory.search(query: query, maxResults: maxResults)
+    public func searchLongTermMemory(query: String, maxResults: Int = 5) async -> [MemoryEntry] {
+        return await longTermMemory.search(query: query, maxResults: maxResults)
     }
 
     /// Retrieves memory entries by category
@@ -80,7 +80,7 @@ public class AgentMemoryService {
         let workingText = workingContext.map { "作業メモリ: \($0.content)" }.joined(separator: "\n")
 
         // Search long-term memory
-        let longTermContext = try await searchLongTermMemory(query: taskDescription, maxResults: 5)
+        let longTermContext = await searchLongTermMemory(query: taskDescription, maxResults: 5)
         let longTermText = longTermContext.map { "長期記憶: \($0.content)" }.joined(separator: "\n")
 
         var contextParts: [String] = []
@@ -195,7 +195,7 @@ public enum MemoryCategory: String, Codable {
 /// Protocol for long-term memory storage implementations
 protocol LongTermMemoryStore {
     func store(_ entry: MemoryEntry) async throws
-    func search(query: String, maxResults: Int) async throws -> [MemoryEntry]
+    func search(query: String, maxResults: Int) async -> [MemoryEntry]
     func getByCategory(_ category: MemoryCategory, maxResults: Int) async throws -> [MemoryEntry]
     func updateImportance(id: UUID, importance: Double) async throws
     func delete(id: UUID) async throws
@@ -230,8 +230,8 @@ class FileBasedLongTermMemory: LongTermMemoryStore {
         try data.write(to: fileURL, options: .atomic)
     }
 
-    func search(query: String, maxResults: Int) async throws -> [MemoryEntry] {
-        let allEntries = try await getAllEntries()
+    func search(query: String, maxResults: Int) async -> [MemoryEntry] {
+        let allEntries = await getAllEntries()
         let queryLower = query.lowercased()
 
         let scored = allEntries.map { entry -> (entry: MemoryEntry, score: Double) in
@@ -245,7 +245,7 @@ class FileBasedLongTermMemory: LongTermMemoryStore {
     }
 
     func getByCategory(_ category: MemoryCategory, maxResults: Int) async throws -> [MemoryEntry] {
-        let allEntries = try await getAllEntries()
+        let allEntries = await getAllEntries()
         return allEntries
             .filter { $0.category == category }
             .sorted { $0.timestamp > $1.timestamp }
@@ -285,13 +285,15 @@ class FileBasedLongTermMemory: LongTermMemoryStore {
 
     // MARK: - Private Methods
 
-    private func getAllEntries() async throws -> [MemoryEntry] {
-        let fileURLs = try FileManager.default.contentsOfDirectory(
+    private func getAllEntries() async -> [MemoryEntry] {
+        guard let fileURLs = try? FileManager.default.contentsOfDirectory(
             at: memoryDirectory,
             includingPropertiesForKeys: nil
-        ).filter { $0.pathExtension == "json" }
+        ) else {
+            return []
+        }
 
-        return try fileURLs.compactMap { url in
+        return fileURLs.filter { $0.pathExtension == "json" }.compactMap { url in
             guard let data = try? Data(contentsOf: url),
                   let entry = try? decoder.decode(MemoryEntry.self, from: data) else {
                 return nil

@@ -127,7 +127,7 @@ public class ReflectionService {
 
     private func analyzePatterns(from execution: ExecutionResult) async throws -> [ReflectionInsight.Pattern] {
         // Get historical execution data from memory
-        let historicalTasks = try await memoryService.searchLongTermMemory(
+        let historicalTasks = await memoryService.searchLongTermMemory(
             query: execution.originalTask,
             maxResults: 5
         )

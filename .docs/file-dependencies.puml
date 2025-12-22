@@ -1,0 +1,191 @@
+@startuml File Dependencies
+
+title Kuroko Project - File Dependencies
+
+' Legend
+legend right
+|= 関係の種類 |= 説明 |
+| <color:#007bff>**import**</color> | モジュールインポート |
+| <color:#28a745>**inherit**</color> | クラス継承 |
+| <color:#dc3545>**compose**</color> | インスタンス生成 |
+| <color:#6c757d>**use**</color> | 参照使用 |
+endlegend
+
+' Core App Files
+package "App Core" as AppCore #LightBlue {
+  [kurokoApp.swift] as App
+  [ContentView.swift] as ContentView
+}
+
+' ViewModels
+package "ViewModels" as ViewModels #LightGreen {
+  [KurokoViewModel.swift] as VM
+}
+
+' Views
+package "Views" as Views #LightCyan {
+  [ChatView.swift] as ChatView
+  [MessageBubble.swift] as MessageBubble
+  [InputArea.swift] as InputArea
+  [ToolResultView.swift] as ToolResultView
+  [ActionButton.swift] as ActionButton
+  [FileAccessSettingsView.swift] as FileAccessSettings
+  [IOSContentView.swift] as IOSContentView
+  [SessionHistoryView.swift] as SessionHistory
+  [SettingsView.swift] as SettingsView
+}
+
+' Models
+package "Models" as Models #Yellow {
+  [AgentModels.swift] as AgentModels
+  [FileSystemModels.swift] as FileSystemModels
+  [SessionModels.swift] as SessionModels
+}
+
+' Services - Agent
+package "Agent Services" as AgentServices #LightGreen {
+  [AgentRunner.swift] as AgentRunner
+  [AgentMemoryService.swift] as AgentMemory
+  [ReflectionService.swift] as Reflection
+}
+
+' Services - Configuration
+package "Config Services" as ConfigServices #LightCyan {
+  [KurokoConfigurationService.swift] as ConfigService
+  [SessionManager.swift] as SessionManager
+}
+
+' Services - LLM
+package "LLM Services" as LLMServices #LightYellow {
+  [LLMService.swift] as LLMService
+  [LLMProvider.swift] as LLMProvider
+  [UnsupportedLLMService.swift] as UnsupportedService
+  [LLMServiceFactory.swift] as LLMFactory
+  [OpenRouterLLMService.swift] as OpenRouterService
+  [LLMModels.swift] as LLMModels
+}
+
+' Services - Tools
+package "Tool Services" as ToolServices #Pink {
+  [Tooling.swift] as Tooling
+  [DefaultToolExecutor.swift] as ToolExecutor
+  [ToolRegistry.swift] as ToolRegistry
+  [ToolErrors.swift] as ToolErrors
+}
+
+' Tool Implementations
+package "Tool Implementations" as ToolImpl #Orange {
+  package "File System" as FileSystemTools {
+    [FileSystemTools.swift] as FileSystemTool
+  }
+  package "Apple" as AppleTools {
+    [AppleCalendarTool.swift] as CalendarTool
+    [AppleRemindersTool.swift] as RemindersTool
+  }
+  package "Web" as WebTools {
+    [GoogleSearchTool.swift] as SearchTool
+  }
+}
+
+' Other Services
+package "Other Services" as OtherServices #Purple {
+  [SearchService.swift] as SearchService
+  [FileAccessManager.swift] as FileAccessManager
+  [FileSystemService.swift] as FileSystemService
+}
+
+' Extensions & Managers
+package "Extensions & Managers" as Extensions #LightGray {
+  [ColorExtensions.swift] as ColorExtensions
+  [ViewExtensions.swift] as ViewExtensions
+  [ThemeManager.swift] as ThemeManager
+}
+
+' Resources
+package "Resources" as Resources #Red {
+  [SystemPrompt.md] as SystemPrompt
+}
+
+' === DEPENDENCY RELATIONSHIPS ===
+
+' App Core Dependencies
+App --> ThemeManager : <color:#007bff>**import**</color>\nThemeManager
+ContentView --> VM : <color:#dc3545>**compose**</color>\nKurokoViewModel()
+
+' ViewModel Dependencies
+VM --> ConfigService : <color:#6c757d>**use**</color>\nKurokoConfigurationService
+VM --> LLMFactory : <color:#6c757d>**use**</color>\nLLMServiceFactory
+VM --> ToolExecutor : <color:#6c757d>**use**</color>\nDefaultToolExecutor
+VM --> SessionManager : <color:#6c757d>**use**</color>\nSessionManager
+VM --> AgentRunner : <color:#dc3545>**compose**</color>\nAgentRunner()
+VM --> AgentModels : <color:#6c757d>**use**</color>\nAgentState, ViewState
+VM --> SessionModels : <color:#6c757d>**use**</color>\nChatMessage, SessionMessage
+
+' View Dependencies
+ChatView --> VM : <color:#6c757d>**use**</color>\nviewModel
+MessageBubble --> SessionModels : <color:#6c757d>**use**</color>\nChatMessage
+IOSContentView --> VM : <color:#6c757d>**use**</color>\nviewModel
+
+' AgentRunner Dependencies
+AgentRunner --> AgentModels : <color:#6c757d>**use**</color>\nAgentState, TaskPlan, ExecutionResult
+AgentRunner --> SessionModels : <color:#6c757d>**use**</color>\nChatMessage, AgentConfig
+AgentRunner --> LLMService : <color:#6c757d>**use**</color>\nLLMService protocol
+AgentRunner --> ToolExecutor : <color:#6c757d>**use**</color>\nToolExecutor protocol
+AgentRunner --> ConfigService : <color:#6c757d>**use**</color>\nKurokoConfigurationService
+AgentRunner --> LLMModels : <color:#6c757d>**use**</color>\nLLMConfig
+AgentRunner --> ToolRegistry : <color:#6c757d>**use**</color>\nToolRegistry
+AgentRunner --> ToolErrors : <color:#6c757d>**use**</color>\nToolError
+
+' LLM Service Dependencies
+LLMFactory --> LLMService : <color:#dc3545>**create**</color>\nLLMService instances
+LLMFactory --> OpenRouterService : <color:#dc3545>**create**</color>\nOpenRouterLLMService()
+LLMFactory --> UnsupportedService : <color:#dc3545>**create**</color>\nUnsupportedLLMService()
+OpenRouterService --> LLMProvider : <color:#6c757d>**use**</color>\nLLMProvider
+OpenRouterService --> LLMModels : <color:#6c757d>**use**</color>\nLLMConfig
+
+' Tool Dependencies
+ToolExecutor --> Tooling : <color:#6c757d>**use**</color>\nTool protocol
+ToolRegistry --> Tooling : <color:#6c757d>**use**</color>\nTool protocol
+FileSystemTool --> Tooling : <color:#28a745>**inherit**</color>\nTool protocol
+CalendarTool --> Tooling : <color:#28a745>**inherit**</color>\nTool protocol
+RemindersTool --> Tooling : <color:#28a745>**inherit**</color>\nTool protocol
+SearchTool --> Tooling : <color:#28a745>**inherit**</color>\nTool protocol
+
+' Configuration Dependencies
+ConfigService --> LLMModels : <color:#6c757d>**use**</color>\nLLMModel
+SessionManager --> SessionModels : <color:#6c757d>**use**</color>\nChatSession, SessionMessage
+
+' Agent Memory Dependencies (Internal Classes)
+AgentMemory --> AgentModels : <color:#6c757d>**use**</color>\nMemoryEntry, MemoryCategory\nLongTermMemoryStore protocol
+
+' Detailed Configuration Dependencies (各ServiceのConfigService使用)
+OpenRouterService --> ConfigService : <color:#6c757d>**use**</color>\nopenRouterApiKey
+ToolRegistry --> ConfigService : <color:#6c757d>**use**</color>\ntool settings, auto-approval
+SessionManager --> ConfigService : <color:#6c757d>**use**</color>\nsave directory settings
+AgentRunner --> ConfigService : <color:#6c757d>**use**</color>\nAgentConfig, LLMModel
+
+' Other Service Dependencies
+FileAccessManager --> FileSystemService : <color:#6c757d>**use**</color>\nFileSystemService
+SearchService --> FileSystemModels : <color:#6c757d>**use**</color>\nFileItem
+
+' View Extension Dependencies
+ChatView --> ThemeManager : <color:#6c757d>**use**</color>\nThemeManager
+ActionButton --> ThemeManager : <color:#6c757d>**use**</color>\nThemeManager
+
+' Settings View Dependencies (Detailed)
+SettingsView --> ConfigService : <color:#6c757d>**use**</color>\nKurokoConfigurationService\nLLMModels, LLMConfig
+SettingsView --> SessionManager : <color:#6c757d>**use**</color>\nSessionManager
+SettingsView --> ThemeManager : <color:#6c757d>**use**</color>\nThemeManager, AppTheme
+SettingsView --> ToolRegistry : <color:#6c757d>**use**</color>\nToolRegistry, Tool protocol
+SettingsView --> FileAccessManager : <color:#6c757d>**use**</color>\nFileAccessManager
+SettingsView --> LLMModels : <color:#6c757d>**use**</color>\nLLMModel (subviews)
+SettingsView --> Tooling : <color:#6c757d>**use**</color>\nTool protocol (settings)
+
+' Settings Subviews Dependencies
+FileAccessSettings --> FileAccessManager : <color:#6c757d>**use**</color>\nFileAccessManager
+SessionHistory --> SessionManager : <color:#6c757d>**use**</color>\nSessionManager
+
+' System Prompt Usage
+AgentRunner --> SystemPrompt : <color:#6c757d>**use**</color>\nSystem prompt text
+
+@enduml

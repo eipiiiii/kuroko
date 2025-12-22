@@ -1,0 +1,123 @@
+@startuml Data Flow Diagram
+
+title ユーザー入力から出力までのデータフロー図
+
+' 外部エンティティ
+actor "ユーザー" as User
+database "OpenRouter API" as API
+database "ファイルシステム" as FS
+database "macOS カレンダー" as Calendar
+database "macOS リマインダー" as Reminders
+database "ウェブ検索API" as Search
+
+' システムコンポーネント
+package "UI Layer" {
+    rectangle "KurokoViewModel" as VM
+    rectangle "ChatView" as View
+    rectangle "InputArea" as Input
+}
+
+package "Business Logic" {
+    rectangle "AgentRunner" as AR
+    rectangle "SessionManager" as SM
+}
+
+package "Service Layer" {
+    rectangle "OpenRouterLLMService" as LLM
+    rectangle "DefaultToolExecutor" as TE
+    rectangle "ToolRegistry" as TR
+    rectangle "ConfigurationService" as Config
+}
+
+package "Tool Implementations" {
+    rectangle "FileSystemTools" as FST
+    rectangle "AppleCalendarTool" as ACT
+    rectangle "AppleRemindersTool" as ART
+    rectangle "GoogleSearchTool" as GST
+}
+
+' データストア
+database "セッションストレージ" as SessionDB
+database "設定ストレージ" as ConfigDB
+
+' データフロー
+User --> Input : テキスト入力
+Input --> VM : String (ユーザー入力)
+VM --> AR : [ChatMessage] (会話履歴)
+
+AR --> LLM : LLMConfig + [ChatMessage]
+LLM --> API : HTTP Request (JSON)
+API --> LLM : Streaming Response (JSON)
+LLM --> AR : String chunks + ToolCall?
+
+alt ツール実行フロー
+    AR --> TE : ToolCall
+    TE --> TR : toolId
+    TR --> TE : Tool instance
+
+    alt ファイル操作
+        TE --> FST : execute(arguments)
+        FST --> FS : ファイル操作
+        FS --> FST : 結果データ
+    else カレンダー操作
+        TE --> ACT : execute(arguments)
+        ACT --> Calendar : カレンダー操作
+        Calendar --> ACT : 結果データ
+    else リマインダー操作
+        TE --> ART : execute(arguments)
+        ART --> Reminders : リマインダー操作
+        Reminders --> ART : 結果データ
+    else ウェブ検索
+        TE --> GST : execute(arguments)
+        GST --> Search : 検索クエリ
+        Search --> GST : 検索結果
+    end
+
+    FST --> TE : String result
+    ACT --> TE : String result
+    ART --> TE : String result
+    GST --> TE : String result
+
+    TE --> AR : String (ツール結果)
+end
+
+AR --> VM : ChatMessage updates
+VM --> View : UI更新データ
+View --> User : 表示更新
+
+VM --> SM : save session
+SM --> SessionDB : [SessionMessage]
+SessionDB --> SM : 保存完了
+
+Config --> VM : LLMModel設定
+Config --> LLM : APIキー等
+ConfigDB --> Config : 設定データ読み込み
+
+' システムプロンプトフロー
+Config --> AR : SystemPrompt
+note right : 初回AgentRunner初期化時
+
+' 状態管理フロー
+AR --> VM : AgentState changes
+VM --> VM : ViewState updates
+
+' エラーフロー
+API --> LLM : HTTPエラー --> AR : Exception
+FS --> FST : アクセスエラー --> TE : ToolError --> AR : Exception
+Calendar --> ACT : 権限エラー --> TE : ToolError --> AR : Exception
+Reminders --> ART : 権限エラー --> TE : ToolError --> AR : Exception
+Search --> GST : APIエラー --> TE : ToolError --> AR : Exception
+
+AR --> VM : Error state --> View : エラー表示 --> User
+
+' 設定変更フロー
+User --> Config : モデル変更設定
+Config --> VM : updateModelConfiguration()
+VM --> LLM : new LLMService instance
+
+' セッション管理フロー
+User --> VM : 新規セッション開始
+VM --> SM : createNewSession()
+VM --> AR : agentRunner = nil (リセット)
+
+@enduml
