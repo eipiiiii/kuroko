@@ -37,6 +37,9 @@ public class OpenRouterLLMService: LLMService {
         request.addValue("kuroko-swift", forHTTPHeaderField: "HTTP-Referer")
         request.addValue("kuroko-swift", forHTTPHeaderField: "X-Title")
 
+        // Set timeout for the request (1 minutes for LLM calls)
+        request.timeoutInterval = 60.0
+
         print("[LLM] API Key configured: \(configService.openRouterApiKey.isEmpty ? "NO" : "YES")")
 
         // Build messages array

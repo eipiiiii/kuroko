@@ -275,7 +275,7 @@ struct ToolMessageBubble: View {
         switch name {
         case "search_web", "google_search":
             return .search
-        case "read_file", "list_dir", "run_terminal_cmd":
+        case "read_file", "list_dir":
             return .fileOperation
         case "run_terminal_cmd":
             return .codeExecution

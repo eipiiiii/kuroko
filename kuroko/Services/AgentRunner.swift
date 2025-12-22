@@ -15,6 +15,15 @@ public class AgentRunner {
     private let toolExecutor: ToolExecutor
     private let systemPrompt: String
 
+    // Tool validation and monitoring services
+    // private let toolValidator = ToolUsageValidator()
+    // private let toolLogger = ToolUsageLogger.shared
+    // private let guardRailService = ToolGuardRailService()
+
+    // Cancellation support
+    private var currentTask: Task<Void, Never>?
+    private var isCancelled = false
+
     // MARK: - Callbacks
 
     public var onStateChange: ((AgentState) -> Void)?
@@ -47,15 +56,34 @@ public class AgentRunner {
             return
         }
 
+        // Reset cancellation state
+        isCancelled = false
+
         // Add user message to conversation history
         messages.append(ChatMessage(role: .user, text: userMessage))
 
         toolCallCount = 0
         threadGrant = false
 
-        // Start with planning phase for complex tasks
-        await transition(to: .planning(nil))
-        try await runLoop()
+        // Create task for cancellable execution
+        currentTask = Task {
+            do {
+                // Start with planning phase for complex tasks
+                await transition(to: .planning(nil))
+                try await runLoop()
+            } catch {
+                if isCancelled {
+                    print("[AGENT] Task cancelled: \(error.localizedDescription)")
+                    await transition(to: .completed)
+                } else {
+                    print("[AGENT] Task failed: \(error.localizedDescription)")
+                    await transition(to: .failed(error.localizedDescription))
+                }
+            }
+        }
+
+        // Wait for the task to complete
+        try await currentTask?.value
     }
 
     /// Starts the agent with a full conversation history.
@@ -69,14 +97,33 @@ public class AgentRunner {
             return
         }
 
+        // Reset cancellation state
+        isCancelled = false
+
         // Set conversation history with system prompt at the beginning
         messages = [ChatMessage(role: .system, text: systemPrompt)] + conversationHistory
 
         toolCallCount = 0
         threadGrant = false
 
-        await transition(to: .awaitingLLM)
-        try await runLoop()
+        // Create task for cancellable execution
+        currentTask = Task {
+            do {
+                await transition(to: .awaitingLLM)
+                try await runLoop()
+            } catch {
+                if isCancelled {
+                    print("[AGENT] Task cancelled: \(error.localizedDescription)")
+                    await transition(to: .completed)
+                } else {
+                    print("[AGENT] Task failed: \(error.localizedDescription)")
+                    await transition(to: .failed(error.localizedDescription))
+                }
+            }
+        }
+
+        // Wait for the task to complete
+        try await currentTask?.value
     }
 
     /// Approves a pending tool call.
@@ -91,6 +138,15 @@ public class AgentRunner {
     public func rejectToolCall() async throws {
         guard case .awaitingApproval = state else { return }
         await transition(to: .completed)
+    }
+
+    /// Cancels the current agent execution.
+    public func cancel() {
+        print("[AGENT] Cancellation requested")
+        isCancelled = true
+        currentTask?.cancel()
+        currentTask = nil
+        print("[AGENT] Agent execution cancelled")
     }
 
     // MARK: - Private Methods
@@ -154,8 +210,8 @@ public class AgentRunner {
                 responseText += chunk
 
                 // Parse the response to extract user-friendly text
-                let userFriendlyText = parseUserFriendlyResponse(from: responseText)
-                assistantMessage.text = userFriendlyText
+                let parseResult = parseUserFriendlyResponse(from: responseText)
+                assistantMessage.text = parseResult.userFriendlyText
                 self.onMessageAdded?(assistantMessage) // Notify ViewModel of the chunk
             },
             onToolCall: { toolCall in
@@ -179,8 +235,8 @@ public class AgentRunner {
             )
 
             // Update the assistant message to be more user-friendly
-            let userFriendlyText = parseUserFriendlyResponse(from: responseText)
-            assistantMessage.text = userFriendlyText.isEmpty ? "Using tools..." : userFriendlyText
+            let parseResult = parseUserFriendlyResponse(from: responseText)
+            assistantMessage.text = parseResult.userFriendlyText.isEmpty ? "Using tools..." : parseResult.userFriendlyText
             onMessageAdded?(assistantMessage)
 
             // Transition to proposing the tool (internal processing only)
@@ -188,49 +244,61 @@ public class AgentRunner {
 
         } else if let proposal = parseToolCallProposal(from: responseText) {
             // Fallback: Tool call was proposed in text format
-            let userFriendlyText = parseUserFriendlyResponse(from: responseText)
-            assistantMessage.text = userFriendlyText.isEmpty ? "Using tools..." : userFriendlyText
+            let parseResult = parseUserFriendlyResponse(from: responseText)
+            assistantMessage.text = parseResult.userFriendlyText.isEmpty ? "Using tools..." : parseResult.userFriendlyText
             onMessageAdded?(assistantMessage)
 
             // Transition to proposing the tool (internal processing only)
             await transition(to: .toolProposed(proposal))
 
         } else {
-            // Normal response. Send the final message content with user-friendly text.
-            let userFriendlyText = parseUserFriendlyResponse(from: responseText)
-            print("[AGENT] Normal response - original: '\(responseText)', parsed: '\(userFriendlyText)'")
+            // Parse the response to handle reflection and determine next action
+            let parseResult = parseUserFriendlyResponse(from: responseText)
+            print("[AGENT] Normal response - parsed: '\(parseResult.userFriendlyText)'")
 
-            // If LLM provided a meaningful response, use it
-            if !userFriendlyText.isEmpty || !responseText.isEmpty {
-                assistantMessage.text = userFriendlyText.isEmpty ? responseText : userFriendlyText
-                print("[AGENT] Setting assistant message text: '\(assistantMessage.text)'")
+            // Check if reflection indicated we should continue thinking
+            if parseResult.hasReflection, let shouldContinue = parseResult.shouldContinue, !shouldContinue {
+                print("[AGENT] Reflection indicated issues - returning to think")
+                // Don't set final response, return to awaitingLLM to continue thinking
+                await transition(to: .awaitingLLM)
+                return
+            }
+
+            // Normal response. Send the final message content with user-friendly text.
+            var finalResponse = ""
+            if !parseResult.userFriendlyText.isEmpty || !responseText.isEmpty {
+                finalResponse = parseResult.userFriendlyText.isEmpty ? responseText : parseResult.userFriendlyText
+                print("[AGENT] Setting assistant message text: '\(finalResponse)'")
             } else if messages.contains(where: { $0.role == .tool }) {
                 // LLM returned empty response after tool execution - this indicates LLM failed to process tool results
                 // According to system prompt, LLM should always provide a response based on tool results
-                // This is a fallback for when LLM doesn't follow the system prompt
                 print("[AGENT] LLM failed to provide response after tool execution, using fallback summary")
 
                 // Find the last tool result message and create a summary
                 if let toolResultMessage = messages.last(where: { $0.role == .tool }) {
                     let summaryResponse = createToolSummaryResponse(toolResultMessage.text)
-                    assistantMessage.text = summaryResponse
+                    finalResponse = summaryResponse
                     print("[AGENT] Using fallback summary response: '\(summaryResponse)'")
                 } else {
-                    assistantMessage.text = "ツールの実行が完了しました。"
+                    finalResponse = "ツールの実行が完了しました。"
                 }
             } else {
                 // No tool results and no response - this shouldn't happen with proper system prompt
-                assistantMessage.text = "応答を生成できませんでした。"
+                finalResponse = "応答を生成できませんでした。"
                 print("[AGENT] No response generated - this indicates a system prompt issue")
             }
 
+            // ガードレールチェックと応答検証は現在無効化されています
+            // guardRailServiceとtoolValidatorが利用できないため
+
+            assistantMessage.text = finalResponse
             onMessageAdded?(assistantMessage)
             await transition(to: .completed)
         }
     }
 
     private func parseToolCallProposal(from text: String) -> ToolCallProposal? {
-        // First, try to parse as OpenAI-style tool call format
+        // First, try to parse as OpenAI-style tool call format from text
         if let toolCall = parseOpenAIToolCall(from: text) {
             return ToolCallProposal(
                 type: "tool_call",
@@ -242,7 +310,19 @@ public class AgentRunner {
             )
         }
 
-        // Try to extract JSON from backtick blocks or direct JSON
+        // Try to parse OpenAI tool_calls format from text content
+        if let toolCalls = parseOpenAIToolCallsFromText(text), let firstToolCall = toolCalls.first {
+            return ToolCallProposal(
+                type: "tool_call",
+                toolId: firstToolCall.function.name,
+                requiresApproval: true,
+                input: parseFunctionArguments(firstToolCall.function.arguments),
+                reason: "Tool execution requested via OpenAI format",
+                nextStepAfterTool: "Continue with tool result"
+            )
+        }
+
+        // Try to extract JSON from backtick blocks or direct JSON (legacy format)
         var jsonString = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
         // Remove markdown code blocks if present
@@ -272,6 +352,31 @@ public class AgentRunner {
             reason: json["reason"] as? String ?? "",
             nextStepAfterTool: json["next_step_after_tool"] as? String ?? ""
         )
+    }
+
+    /// Parses OpenAI tool_calls format from text content
+    private func parseOpenAIToolCallsFromText(_ text: String) -> [ToolCall]? {
+        guard let data = text.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let toolCallsJson = json["tool_calls"] as? [[String: Any]] else {
+            return nil
+        }
+
+        return toolCallsJson.compactMap { toolCallJson in
+            guard let id = toolCallJson["id"] as? String,
+                  let type = toolCallJson["type"] as? String,
+                  let functionJson = toolCallJson["function"] as? [String: Any],
+                  let name = functionJson["name"] as? String,
+                  let arguments = functionJson["arguments"] as? String else {
+                return nil
+            }
+
+            return ToolCall(
+                id: id,
+                type: type,
+                function: FunctionCall(name: name, arguments: arguments)
+            )
+        }
     }
 
     /// Parses OpenAI-style tool call from response text
@@ -313,58 +418,88 @@ public class AgentRunner {
     }
 
     /// Parses the LLM response to extract user-friendly text and preserve thinking process in conversation history.
-    private func parseUserFriendlyResponse(from text: String) -> String {
+    /// Returns: (userFriendlyText: String, shouldContinue: Bool?, hasReflection: Bool)
+    private func parseUserFriendlyResponse(from text: String) -> (userFriendlyText: String, shouldContinue: Bool?, hasReflection: Bool) {
         var remainingText = text
+        var tagOrder: [String] = []
+        var tagStructureErrors: [String] = []
 
-        // Extract and preserve thinking process
-        if let thinkingStart = remainingText.range(of: "<thinking>"),
-           let thinkingEnd = remainingText.range(of: "</thinking>", range: thinkingStart.upperBound..<remainingText.endIndex) {
-            let thinkingContent = remainingText[thinkingStart.upperBound..<thinkingEnd.lowerBound]
+        // Expected tag order based on system prompt (Thought→Action→Reflection)
+        let expectedOrder = ["thinking", "action", "reflection"]
 
+        // Helper function to validate tag structure and extract content
+        func processTag(tagName: String, startTag: String, endTag: String) -> String? {
+            let startRange = remainingText.range(of: startTag)
+            let endRange = startRange.flatMap { remainingText.range(of: endTag, range: $0.upperBound..<remainingText.endIndex) }
+
+            if let start = startRange, let end = endRange {
+                let content = String(remainingText[start.upperBound..<end.lowerBound])
+                tagOrder.append(tagName)
+                remainingText.removeSubrange(start.lowerBound..<end.upperBound)
+                return content
+            } else if startRange != nil && endRange == nil {
+                // Start tag found but no end tag - structure error
+                tagStructureErrors.append("\(tagName): 開始タグ<\(tagName)>が見つかりましたが、終了タグ</\(tagName)>が見つかりません")
+            } else if startRange == nil && endRange != nil {
+                // End tag found but no start tag - structure error
+                tagStructureErrors.append("\(tagName): 終了タグ</\(tagName)>が見つかりましたが、開始タグ<\(tagName)>が見つかりません")
+            }
+
+            return nil
+        }
+
+        // Process thinking tag
+        if let thinkingContent = processTag(tagName: "thinking", startTag: "<thinking>", endTag: "</thinking>") {
             // Add thinking as a separate assistant message
             let thinkingMessage = ChatMessage(
                 role: .assistant,
-                text: "**思考プロセス:**\n\(String(thinkingContent).trimmingCharacters(in: .whitespacesAndNewlines))"
+                text: "**思考プロセス:**\n\(thinkingContent.trimmingCharacters(in: .whitespacesAndNewlines))"
             )
             messages.append(thinkingMessage)
             onMessageAdded?(thinkingMessage)
-
-            // Remove thinking section from remaining text
-            remainingText.removeSubrange(thinkingStart.lowerBound..<thinkingEnd.upperBound)
         }
 
-        // Extract and preserve observation process
-        if let observationStart = remainingText.range(of: "<observation>"),
-           let observationEnd = remainingText.range(of: "</observation>", range: observationStart.upperBound..<remainingText.endIndex) {
-            let observationContent = remainingText[observationStart.upperBound..<observationEnd.lowerBound]
-
-            // Add observation as a separate assistant message
-            let observationMessage = ChatMessage(
+        // Process action tag (if present)
+        if let actionContent = processTag(tagName: "action", startTag: "<action>", endTag: "</action>") {
+            // Add action as a separate assistant message
+            let actionMessage = ChatMessage(
                 role: .assistant,
-                text: "**分析結果:**\n\(String(observationContent).trimmingCharacters(in: .whitespacesAndNewlines))"
+                text: "**実行内容:**\n\(actionContent.trimmingCharacters(in: .whitespacesAndNewlines))"
             )
-            messages.append(observationMessage)
-            onMessageAdded?(observationMessage)
-
-            // Remove observation section from remaining text
-            remainingText.removeSubrange(observationStart.lowerBound..<observationEnd.upperBound)
+            messages.append(actionMessage)
+            onMessageAdded?(actionMessage)
         }
 
-        // Extract and preserve reflection process
-        if let reflectionStart = remainingText.range(of: "<reflection>"),
-           let reflectionEnd = remainingText.range(of: "</reflection>", range: reflectionStart.upperBound..<remainingText.endIndex) {
-            let reflectionContent = remainingText[reflectionStart.upperBound..<reflectionEnd.lowerBound]
+        // Process reflection tag - 強化された自己評価機能
+        var shouldContinue: Bool? = nil
+        var hasReflection = false
 
-            // Add reflection as a separate assistant message
+        if let reflectionContent = processTag(tagName: "reflection", startTag: "<reflection>", endTag: "</reflection>") {
+            // Add reflection as a separate assistant message with enhanced validation
             let reflectionMessage = ChatMessage(
                 role: .assistant,
-                text: "**振り返り:**\n\(String(reflectionContent).trimmingCharacters(in: .whitespacesAndNewlines))"
+                text: "**自己評価:**\n\(reflectionContent.trimmingCharacters(in: .whitespacesAndNewlines))"
             )
             messages.append(reflectionMessage)
             onMessageAdded?(reflectionMessage)
 
-            // Remove reflection section from remaining text
-            remainingText.removeSubrange(reflectionStart.lowerBound..<reflectionEnd.upperBound)
+            // Perform reflection-based validation
+            shouldContinue = performReflectionValidation(reflectionContent)
+            hasReflection = true
+        }
+
+        // Report tag structure issues and order information (non-enforced validation)
+        if !tagOrder.isEmpty {
+            // Report tag order information for debugging
+            print("[TAG-VALIDATION] 検出されたタグ順序: \(tagOrder.joined(separator: " → "))")
+            print("[TAG-VALIDATION] 推奨される順序: \(expectedOrder.joined(separator: " → "))")
+
+            // Only report structure errors as actual issues
+            if !tagStructureErrors.isEmpty {
+                print("[TAG-VALIDATION] タグ構造エラー: \(tagStructureErrors.joined(separator: "; "))")
+            }
+
+            print("[TAG-VALIDATION] タグ処理完了: \(tagOrder.joined(separator: ", "))")
         }
 
         // First, check if the response contains <response> tags
@@ -372,7 +507,7 @@ public class AgentRunner {
            let responseEnd = remainingText.range(of: "</response>", range: responseStart.upperBound..<remainingText.endIndex) {
             // Extract content between <response> tags
             let responseContent = remainingText[responseStart.upperBound..<responseEnd.lowerBound]
-            return String(responseContent).trimmingCharacters(in: .whitespacesAndNewlines)
+            return (userFriendlyText: String(responseContent).trimmingCharacters(in: .whitespacesAndNewlines), shouldContinue: shouldContinue, hasReflection: hasReflection)
         }
 
         // If no <response> tags found, try to parse as JSON (structured response format)
@@ -381,22 +516,22 @@ public class AgentRunner {
 
             // Check if this is a tool call response - in that case, don't show the JSON
             if json["type"] as? String == "tool_call" {
-                return ""
+                return (userFriendlyText: "", shouldContinue: shouldContinue, hasReflection: hasReflection)
             }
 
             // Extract response field if it exists
             if let response = json["response"] as? String {
-                return response
+                return (userFriendlyText: response, shouldContinue: shouldContinue, hasReflection: hasReflection)
             }
 
             // Extract content field if it exists
             if let content = json["content"] as? String {
-                return content
+                return (userFriendlyText: content, shouldContinue: shouldContinue, hasReflection: hasReflection)
             }
 
             // Extract message field if it exists
             if let message = json["message"] as? String {
-                return message
+                return (userFriendlyText: message, shouldContinue: shouldContinue, hasReflection: hasReflection)
             }
         }
 
@@ -404,7 +539,7 @@ public class AgentRunner {
         if let jsonStart = remainingText.firstIndex(of: "{"), jsonStart != remainingText.startIndex {
             let beforeJson = remainingText[..<jsonStart].trimmingCharacters(in: .whitespacesAndNewlines)
             if !beforeJson.isEmpty {
-                return beforeJson
+                return (userFriendlyText: beforeJson, shouldContinue: shouldContinue, hasReflection: hasReflection)
             }
         }
 
@@ -445,10 +580,10 @@ public class AgentRunner {
 
         // If the cleaned text is empty or still contains JSON, return empty string
         if cleanedText.isEmpty || cleanedText.hasPrefix("{") || cleanedText.hasSuffix("}") {
-            return ""
+            return (userFriendlyText: "", shouldContinue: shouldContinue, hasReflection: hasReflection)
         }
 
-        return cleanedText
+        return (userFriendlyText: cleanedText, shouldContinue: shouldContinue, hasReflection: hasReflection)
     }
 
     private func needsApproval(for proposal: ToolCallProposal) -> Bool {
@@ -479,6 +614,8 @@ public class AgentRunner {
 
     private func executeTool(_ proposal: ToolCallProposal) async throws {
         toolCallCount += 1
+        let startTime = Date()
+
         print("[TOOL] Executing: \(proposal.toolId)")
         print("[TOOL] Input: \(proposal.input)")
 
@@ -495,6 +632,8 @@ public class AgentRunner {
             let result = try await toolExecutor.executeToolCall(toolCall)
             print("[TOOL] Executor returned result, length: \(result.count)")
 
+            let executionTime = Date().timeIntervalSince(startTime)
+
             // Add tool result message
             let toolResultMessage = ChatMessage(role: .tool, text: result, toolCallId: toolCall.id)
             messages.append(toolResultMessage)
@@ -504,7 +643,9 @@ public class AgentRunner {
             await transition(to: .awaitingLLM)
             print("[TOOL] Transition complete")
         } catch {
+            let executionTime = Date().timeIntervalSince(startTime)
             print("[TOOL] Executor failed: \(error.localizedDescription)")
+
             await transition(to: .failed(error.localizedDescription))
         }
     }
@@ -569,16 +710,19 @@ public class AgentRunner {
             throw AgentError.noUserMessage
         }
 
+        // Get available tools dynamically
+        let availableTools = ToolRegistry.shared.getAvailableTools()
+        let toolsDescription = availableTools.map { tool in
+            "- \(tool.name): \(tool.description)"
+        }.joined(separator: "\n")
+
         let planPrompt = """
 以下のタスクを実行するための計画を作成してください：
 
 タスク: \(userMessage.text)
 
 利用可能なツール:
-- FileSystemTools: ファイル操作（読み取り、書き込み、検索）
-- AppleCalendarTool: カレンダー操作
-- AppleRemindersTool: リマインダー操作
-- GoogleSearchTool: ウェブ検索
+\(toolsDescription)
 
 計画の形式（JSON）:
 {
@@ -761,6 +905,57 @@ public class AgentRunner {
             success: true,
             duration: plan.estimatedDuration
         )
+    }
+
+    /// Performs validation based on LLM's reflection and returns whether to continue or complete
+    private func performReflectionValidation(_ reflectionContent: String) -> Bool {
+        print("[REFLECTION-VALIDATION] Analyzing reflection content...")
+
+        let content = reflectionContent.lowercased()
+
+        // Check if reflection mentions tool usage issues that require immediate action
+        let toolUsageIssues = [
+            "ツールを使用しなかった",
+            "ツールを使わなかった",
+            "検索しなかった",
+            "直接回答した",
+            "知識で回答した",
+            "不適切なツール",
+            "間違ったツール",
+            "ツールが必要",
+            "検索が必要"
+        ]
+
+        let hasToolIssues = toolUsageIssues.contains { issue in
+            content.contains(issue)
+        }
+
+        // Check if reflection confirms proper tool usage or completion
+        let completionIndicators = [
+            "適切なツールを使用",
+            "正しくツールを使用",
+            "検索ツールを使用",
+            "ツール使用が適切",
+            "問題ない",
+            "完了",
+            "終了",
+            "回答済み"
+        ]
+
+        let shouldComplete = completionIndicators.contains { indicator in
+            content.contains(indicator)
+        }
+
+        if hasToolIssues {
+            print("[REFLECTION-VALIDATION] ⚠️  Reflection indicates tool usage issues - returning to think")
+            return false // Continue thinking (return to awaitingLLM)
+        } else if shouldComplete {
+            print("[REFLECTION-VALIDATION] ✓ Reflection confirms proper completion")
+            return true // Complete the task
+        } else {
+            print("[REFLECTION-VALIDATION] ? Reflection content unclear - assuming completion")
+            return true // Default to completion
+        }
     }
 }
 

@@ -1,33 +1,9 @@
-# ユーザー入力から出力までの完全な動作フロー可視化タスク
-
-## 計画フェーズ
-- [x] .agent ディレクトリ確認
-- [x] todo.md リセット
-- [x] implementation.md 作成
-- [x] walkthrough.md 初期化
-
-## Phase 1: システム動作フロー分析
-- [x] 主要コンポーネントの動作理解（KurokoViewModel, AgentRunner, LLMService）
-- [x] ユーザー入力の受付から出力までの全体フロー把握
-- [x] 各サービスの役割と連携関係の分析
-
-## Phase 2: 処理シーケンスの詳細化
-- [x] 入力処理シーケンスの詳細分析
-- [x] LLM呼び出しと応答処理の分析
-- [x] ツール実行と結果処理の分析
-- [x] メモリとセッション管理の分析
-
-## Phase 3: 可視化ドキュメント作成
-- [x] 処理フロー図の作成（PlantUML or Mermaid）
-- [x] シーケンス図の作成
-- [x] データフローの可視化
-
-## Phase 4: ドキュメント更新
-- [x] .docs/README.mdの更新
-- [x] 新しい可視化ドキュメントの追加
-- [x] 使用ガイドの作成
-
-## Phase 5: 検証と調整
-- [x] 動作フローの正確性確認
-- [x] ドキュメントの完全性検証
-- [x] 可読性と理解しやすさのチェック
+- [x] コンパイルエラーの分析：ToolUsageValidator, ToolUsageLogger, ToolGuardRailServiceが見つからない
+- [x] 存在しないクラスの削除
+- [x] try式の問題修正：throwing関数でない箇所でtry awaitを使っている
+- [x] タプルアクセスエラーの修正：parseUserFriendlyResponseの戻り値型の問題
+- [x] 戻り値型エラーの修正：Stringをタプルに変更
+- [x] コードの修正実装
+- [x] コンパイルテスト
+- [x] システムプロンプト修正：LLMがツールを使用し、正しいタグ順序を守るように
+- [ ] LLM応答形式のテストと修正
